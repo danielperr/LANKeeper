@@ -1,5 +1,6 @@
 # LANKeeper (https://github.com/danielperr/LANKeeper)
 
+from accepts import accepts
 import os
 import re
 
@@ -22,6 +23,7 @@ class Firewall (object):
         rule_names = list(map(lambda x: re.sub(r'^Rule Name:\s*', '', x), output.split('\n')[:-1]))
         self.blocked_ips = list(map(lambda x: x.lstrip(self.rule_prefix), rule_names))
 
+    @accepts(object, str)
     def block_ip(self, ip):
         response = os.popen('netsh advfirewall firewall add rule name="%s%s" dir=in action=block remoteip=%s'
                             % (self.rule_prefix, ip, ip)).read()
@@ -29,6 +31,7 @@ class Firewall (object):
             raise FirewallError(response)
         self.blocked_ips.append(ip)
 
+    @accepts(object, str)
     def unblock_ip(self, ip):
         response = os.popen('netsh advfirewall firewall delete rule name="%s%s"' % (self.rule_prefix, ip)).read()
         if 'Ok.' not in response:
