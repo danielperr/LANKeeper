@@ -14,5 +14,5 @@ class BaseDetector (ABC):
     @classmethod
     @abstractmethod
     def detect(cls) -> list:
-        """:returns str list of suspicious ips"""
+        """:returns str list of dangerous ips"""
         pass
