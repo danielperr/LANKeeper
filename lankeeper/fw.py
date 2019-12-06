@@ -1,6 +1,7 @@
 # LANKeeper (https://github.com/danielperr/LANKeeper)
-
+from scapy.all import sniff
 from accepts import accepts
+import detectors.all
 import os
 import re
 
@@ -15,6 +16,17 @@ class Firewall (object):
 
     def __init__(self):
         self.blocked_ips = list()
+        self.detectors = [detector() for detector in detectors.all.detectors]
+
+    def handle_packet(self, p):
+        for detector in self.detectors:
+            detector.handle_packet(p)
+            toblock = detector.detect()
+            for ip in toblock:
+                # block!
+                if ip not in self.blocked_ips:
+                    self.block_ip(ip)
+                    print('BLOCKED %s for TCP flooding' % ip)
 
     def fetch_rules(self):
         """Fetch advfirewall rules and update the list"""
@@ -44,9 +56,11 @@ class Firewall (object):
 
 if __name__ == '__main__':
     fw = Firewall()
+    # unblock ips from previous tests
+    fw.fetch_rules()
+    for blocked_ip in fw.blocked_ips:
+        fw.unblock_ip(blocked_ip)
     fw.fetch_rules()
     print(fw.blocked_ips)
-    fw.block_ip('10.100.102.5')
-    print(fw.blocked_ips)
-    fw.unblock_ip('10.100.102.5')
-    print(fw.blocked_ips)
+    # sniff and forward packets to the fw
+    sniff(filter='tcp', prn=fw.handle_packet)
