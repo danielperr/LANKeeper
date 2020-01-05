@@ -30,7 +30,7 @@ class Scanner (object):
         if verbose:
             print('Starting scan')
 
-        ans, unans = srp([Ether(dst='ff:ff:ff:ff:ff:ff') / ARP(pdst=target) for target in self.targets]
+        send([Ether(dst='ff:ff:ff:ff:ff:ff') / ARP(pdst=target) for target in self.targets]
                          , multi=1, verbose=0, timeout=1, **self.scapykwargs)
 
         count = 0
