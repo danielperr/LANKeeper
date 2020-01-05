@@ -1,13 +1,11 @@
 # LANKeeper (https://github.com/danielperr/LANKeeper)
 # Remote host machine struct
 
-import IPy
-
 
 class Host (object):
     
     def __init__(self,
-                 ip: IPy.IP,
+                 ip: str,
                  mac: str = '',
                  name: str = '',
                  vendor: str = '',
@@ -17,3 +15,7 @@ class Host (object):
         self.name = name
         self.vendor = vendor
         self.openports = openports
+
+    def __str__(self):
+        return '%s (%s)\n%s (%s)\nports: %s'\
+               % (self.ip, self.name, self.mac, self.vendor, self.openports)
