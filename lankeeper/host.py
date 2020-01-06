@@ -17,5 +17,10 @@ class Host (object):
         self.openports = openports
 
     def __str__(self):
-        return '%s (%s)\n%s (%s)\nports: %s'\
-               % (self.ip, self.name, self.mac, self.vendor, self.openports)
+        return '* Host is up\n%s%s\n%s%s%s' % (
+            self.ip,
+            ' (%s)' % self.name if self.name else '',
+            self.mac,
+            ' (%s)' % self.vendor if self.vendor else '',
+            '\nPorts: [%s]' % ', '.join(self.openports) if self.openports else ''
+        )
