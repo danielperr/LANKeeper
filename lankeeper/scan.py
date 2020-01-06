@@ -32,10 +32,24 @@ class Scanner (object):
             else:
                 ips.append(str(ipy_target))
 
+        def threaded_scan(h):
+            try:
+                self._scan(h, options)
+            except ScanError:
+                return
+
         hosts = [Host(ip) for ip in ips]
+        threads = list()
         for host in hosts:
-            self._scan(host, options)
+            thread = threading.Thread(target=threaded_scan, args=(host, ))
+            thread.start()
+            threads.append(thread)
+        for thread in threads:
+            thread.join()
+
+        hosts = list(filter(lambda x: x.mac, hosts))
         print('\n'.join(map(str, hosts)))
+        print('%s Hosts up + 1 (me)' % len(hosts))
 
     def _scan(self, host, options=0):
         if not host.ip:
@@ -62,7 +76,17 @@ class Scanner (object):
         host.vendor = '' if 'error' in result else result['company']
 
     def _getports(self, host):
-        pass
+        host.openports = list()
+        # for port in range(65535):
+        #     response = sr1(IP(dst=host['ip']) / TCP(dport=port, flags='S'), timeout=1)
+        #     if response:
+        #         if response.haslayer(TCP) and response[TCP].flags == 'SA':
+        #             host['ports'].append(port)
+        ans, unans = sr([IP(dst=host.ip) / TCP(dport=port, flags='S') for port in range(9999)]
+                        , verbose=0, multi=1, timeout=1)
+        for snt, recvd in ans:
+            if recvd and recvd.haslayer(TCP) and recvd[TCP].flags == 0x12:  # SYN ACK = port open
+                host.openports.append(recvd['TCP'].sport)
 
 
 class ScanError (Exception):
@@ -72,4 +96,4 @@ class ScanError (Exception):
 if __name__ == '__main__':
     sc = Scanner()
     # sc.scan('10.100.102.0/24')
-    sc.scan('10.100.102.1', 7)
+    sc.scan('10.100.102.0/24', 3)
