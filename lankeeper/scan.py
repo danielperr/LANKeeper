@@ -99,8 +99,11 @@ class Scanner (object):
 
     def _getvendor(self, host):
         response = requests.get('http://macvendors.co/api/' + host.mac)
-        result = response.json()['result']
-        host.vendor = '' if 'error' in result else result['company']
+        try:
+            result = response.json()['result']
+            host.vendor = '' if 'error' in result else result['company']
+        except KeyError:
+            return
 
     def _getports(self, host):
         host.openports = list()
