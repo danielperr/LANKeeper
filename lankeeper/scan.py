@@ -12,6 +12,8 @@ NAME = 0b1
 VENDOR = 0b10
 PORTS = 0b100
 
+DEFAULT_ARP_TIMEOUT = 2  # sec
+
 
 class Scanner (object):
 
@@ -21,12 +23,12 @@ class Scanner (object):
         PORTS: 'ports'
     }
 
-    def __init__(self):
+    def __init__(self, **kwargs):
         self.scan_times = list()  # TODO Scanner scan times
+        self.scapykwargs = kwargs
 
-    def scan(self, targets, options=0):
-
-        ips = list()
+    def scan(self, targets, options=0, **kwargs):
+        ips = list()  # list of ip addresses we are going to scan
         for target in targets.split(','):
             try:
                 ipy_target = IPy.IP(target.strip())
@@ -36,14 +38,39 @@ class Scanner (object):
                 ips += list(map(str, ipy_target))
             else:
                 ips.append(str(ipy_target))
+        timeout = DEFAULT_ARP_TIMEOUT
+        if 'timeout' in kwargs.keys():
+            timeout = kwargs['timeout']
 
+        # Perform basic scans (ip <-> mac)
+        print('Starting scan')
+        ipmac = dict()  # {ip: mac}
+
+        def handle_is_at(p):
+            ipmac[p.psrc] = p.hwsrc
+
+        def threaded_sniff():
+            sniff(filter='arp',
+                  lfilter=lambda p: p.op == 2 and p.hwdst == conf.iface.mac,
+                  prn=handle_is_at,
+                  timeout=timeout)
+
+        sniff_thread = threading.Thread(target=threaded_sniff, args=())
+        sniff_thread.start()
+        sendp([Ether(dst='ff:ff:ff:ff:ff:ff') / ARP(pdst=ip) for ip in ips],
+              verbose=0, **self.scapykwargs)
+        sniff_thread.join()
+
+        hosts = sorted([Host(ip, mac) for ip, mac in ipmac.items()], key=lambda h: IPy.IP(h.ip))
+        print('%s hosts are up. Running scans...' % len(hosts))
+
+        # Perform custom / optional scans
         def threaded_scan(h):
             try:
                 self._scan(h, options)
             except ScanError:
                 return
 
-        hosts = [Host(ip) for ip in ips]
         threads = list()
         for host in hosts:
             thread = threading.Thread(target=threaded_scan, args=(host, ))
@@ -54,17 +81,12 @@ class Scanner (object):
 
         hosts = list(filter(lambda x: x.mac, hosts))
         print('\n'.join(map(str, hosts)))
-        print('%s Hosts up + 1 (me)' % len(hosts))
+        print('%s hosts up.' % len(hosts))
 
     def _scan(self, host, options=0):
-        if not host.ip:
+        """Given host must have IP and MAC addresses"""
+        if not (host.ip and host.mac):
             raise ScanError('given host must have an ip')
-        if not host.mac:
-            ans = srp1(Ether(dst=ETHER_BROADCAST) / ARP(pdst=host.ip), verbose=0, timeout=5)
-            if ans:
-                host.mac = ans.hwsrc
-            else:
-                raise ScanError('given host does not seem up')
         for flagnum, flagname in self.options_flags.items():
             if flagnum & options:
                 exec('self._get%s(host)' % flagname)
