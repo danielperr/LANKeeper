@@ -8,12 +8,17 @@ import socket
 import requests
 
 
+NAME = 0b1
+VENDOR = 0b10
+PORTS = 0b100
+
+
 class Scanner (object):
 
     options_flags = {
-        0x1: 'name',
-        0x2: 'vendor',
-        0x4: 'ports'
+        NAME: 'name',
+        VENDOR: 'vendor',
+        PORTS: 'ports'
     }
 
     def __init__(self):
@@ -96,4 +101,4 @@ class ScanError (Exception):
 if __name__ == '__main__':
     sc = Scanner()
     # sc.scan('10.100.102.0/24')
-    sc.scan('10.100.102.0/24', 3)
+    sc.scan('10.100.102.0/24', NAME + VENDOR)
