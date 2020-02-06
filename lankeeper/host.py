@@ -24,5 +24,5 @@ class Host (object):
             ' (%s)' % self.name if self.name else '',
             self.mac,
             ' (%s)' % self.vendor if self.vendor else '',
-            '\nPorts: [%s]' % ', '.join(self.openports) if self.openports else ''
+            '\nPorts: [%s]' % ', '.join(map(str, self.openports)) if self.openports else ''
         )
