@@ -4,6 +4,7 @@
 from scapy.all import *
 from host import Host
 from ports import COMMON_PORTS
+import history as h
 import IPy
 import socket
 import requests
@@ -14,6 +15,7 @@ VENDOR = 0b10
 PORTS = 0b100
 
 DEFAULT_ARP_TIMEOUT = 2  # sec
+DEFAULT_PROG_INTERVAL = 30  # sec
 
 
 class Scanner (object):
@@ -44,7 +46,7 @@ class Scanner (object):
             timeout = kwargs['timeout']
 
         # Perform basic scans (ip <-> mac)
-        print('Starting scan')
+        # print('scanning')
         ipmac = dict()  # {ip: mac}
 
         def handle_is_at(p):
@@ -63,7 +65,7 @@ class Scanner (object):
         sniff_thread.join()
 
         hosts = sorted([Host(ip, mac) for ip, mac in ipmac.items()], key=lambda h: IPy.IP(h.ip))
-        print('%s hosts are up. Running scans...' % len(hosts))
+        # print('%s hosts are up. Running scans...' % len(hosts))
 
         # Perform custom / optional scans
         def threaded_scan(h):
@@ -81,8 +83,23 @@ class Scanner (object):
             thread.join()
 
         hosts = list(filter(lambda x: x.mac, hosts))
-        print('\n'.join(map(str, hosts)))
-        print('%s hosts up.' % len(hosts))
+        # print('\n'.join(map(str, hosts)))
+        # print('%s hosts up.' % len(hosts))
+        return hosts
+
+    def progressive_scan(self, history_obj, targets, options=0, interval=DEFAULT_PROG_INTERVAL, **kwargs):
+        """Repeatedly scans targets in timed intervals and writes changes to history
+        :param history_obj: history object
+        :param targets: targets to scan
+        :param options: scan options
+        :param interval: the time interval between scans in seconds
+        :param kwargs: scapy kwargs"""
+        while 1:
+            hosts = self.scan(targets, options, **kwargs)
+            for host in hosts:
+                # history_obj.add_record(host.ip, h.HOST, None, datetime.now())
+                history_obj.update_host(host, datetime.now())
+            time.sleep(interval)
 
     def _scan(self, host, options=0):
         """Given host must have IP and MAC addresses"""
@@ -128,4 +145,6 @@ if __name__ == '__main__':
     sc = Scanner()
     # sc.scan('10.100.102.0/24')
     # sc.scan('10.100.102.0/24', NAME + VENDOR)
-    sc.scan('10.100.102.6', NAME + VENDOR + PORTS)
+    # sc.scan('10.100.102.6', NAME + VENDOR + PORTS)
+    hs = h.History(new=1)
+    sc.progressive_scan(hs, '10.100.102.0/24', NAME + VENDOR, 5)
