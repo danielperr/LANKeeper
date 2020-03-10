@@ -72,7 +72,7 @@ class History (object):
                           VALUES(?,?,?,?,?,?,?)''',
                        (host.ip, host.mac, host.name, host.vendor, ','.join(host.ports), strtime, strtime))
             # notify
-            print('NEW HOST DISCOVERED : ' + str(host))
+            print(time.strftime('%m/%d/%Y %H:%M:%S') + ' > NEW HOST DISCOVERED : ' + str(host))
         else:
             cr.execute('''UPDATE hosts SET last_seen = ?,
                                            mac = ?,
