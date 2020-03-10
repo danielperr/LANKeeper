@@ -147,4 +147,6 @@ if __name__ == '__main__':
     # sc.scan('10.100.102.0/24', NAME + VENDOR)
     # sc.scan('10.100.102.6', NAME + VENDOR + PORTS)
     hs = h.History(new=1)
-    sc.progressive_scan(hs, '10.100.102.0/24', NAME + VENDOR, 5)
+    # sc.progressive_scan(hs, '10.100.102.0/24', 0, 5)
+    sc.progressive_scan(hs, ', '.join(['172.16.%s.0/24' % x for x in [0, 3, 10, 11, 12, 13]]), NAME + VENDOR, 1)
+    # sc.progressive_scan(hs, '172.16.0.0/16', 0, 5)
