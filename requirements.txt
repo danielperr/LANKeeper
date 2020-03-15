@@ -1,3 +1,4 @@
+PyQt5
 accepts==2019.4.13
 certifi==2019.9.11
 chardet==3.0.4
