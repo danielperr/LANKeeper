@@ -80,6 +80,15 @@ class MainWindow (QMainWindow):
         self.devicesPanel = Panel()
         self.devmonFrame.layout().addWidget(self.devicesPanel, 12)
         self.devicesPanel.panelTitle = 'Devices'
+        self.devicesPanel.mainFrame.setLayout(QVBoxLayout())
+        self.devicesPanel.mainFrame.layout().setContentsMargins(0, 0, 0, 0)
+        self.devicesPanel.mainFrame.layout().setSpacing(10)
+        #       <devicesTable>
+        self.devicesTable = Table(1, 4)
+        self.devicesPanel.mainFrame.layout().addWidget(self.devicesTable)
+        self.devicesTable.setHorizontalHeaderLabels(['', 'Device', 'Vendor', 'Last seen'])
+        self.devicesTable.set
+        #       </devicesTable>
         #     </devicesPanel>
         #     <monitoringPanel>
         self.monitoringPanel = Panel()
@@ -136,7 +145,14 @@ class Panel (QFrame):
         self._panelTitle = value
 
 
+class Table (QTableWidget):
+
+    def __init__(self, r, c, *args, **kwargs):
+        super().__init__(r, c, *args, **kwargs)
+
+
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     window = MainWindow()
+    # table = Table(15, 3)
     sys.exit(app.exec_())
