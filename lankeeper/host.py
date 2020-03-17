@@ -11,12 +11,12 @@ class Host (object):
                  mac: str = '',
                  name: str = '',
                  vendor: str = '',
-                 openports: list = []):
+                 ports: list = []):
         self.ip = ip
         self.mac = mac
         self.name = name
         self.vendor = vendor
-        self.openports = openports
+        self.ports = ports
 
     def __str__(self):
         return '\033[4m%s\033[0m%s - \033[4m%s\033[0m%s%s' % (
@@ -24,5 +24,5 @@ class Host (object):
             ' (%s)' % self.name if self.name else '',
             self.mac,
             ' (%s)' % self.vendor if self.vendor else '',
-            '\nPorts: [%s]' % ', '.join(map(str, self.openports)) if self.openports else ''
+            '\nPorts: [%s]' % ', '.join(map(str, self.ports)) if self.ports else ''
         )

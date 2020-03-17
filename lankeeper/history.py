@@ -11,6 +11,7 @@ import re
 
 
 DB_PATH = '.\\history.db'
+DB_TIME_FORMAT = '%m/%d/%Y %H:%M:%S'
 
 DOMAIN = 0
 PROCESS = 1
@@ -28,20 +29,6 @@ class History (object):
         # p.show()
         if not p.haslayer('DNS'):
             return
-
-        # if p.haslayer('IP'):
-        #     conn = self._connect_to_db()
-        #     cr = conn.cursor()
-        #     cr.execute('''SELECT id FROM hosts WHERE ip=?''', (p['IP'].src, ))
-        #     results = cr.fetchone()
-        #     if not results:
-        #         cr.execute('''INSERT INTO hosts(ip) VALUES(?)''', (p['IP'].src, ))
-        #     cr.execute('''SELECT id FROM hosts WHERE ip=?''', (p['IP'].src, ))
-        #     results = cr.fetchone()
-        #     host_id = results[0]
-        #     conn.commit()
-        #     conn.close()
-        # currently only domain type
         if p.haslayer('DNS'):
             try:  # TODO: check if reply and only then
                 self.add_record(p['IP'].src, DOMAIN, p['DNS'].qd[0].qname.decode('ASCII'), datetime.datetime.now())
@@ -59,29 +46,64 @@ class History (object):
     def add_record(self, host_ip, clf, description, time):
         """
         :param host_ip: ip of relevant host
-        :param clf: record classification (domain / process)
+        :param clf: record classification (domain / process / ...)
         :param description: domain / process name
         :param time: datetime object of record time
         """
+        strtime = time.strftime(DB_TIME_FORMAT)
         conn = self._connect_to_db()
         cr = conn.cursor()
         cr.execute('''INSERT INTO history(host, type, desc, time) VALUES(?,?,?,?)''',
-                   (host_ip, clf, description, time.strftime("%m/%d/%Y %H:%M:%S")))
+                   (host_ip, clf, description, strtime))
+        conn.commit()
+        conn.close()
+
+    def update_host(self, host, time):
+        """Updates or adds a host to the database
+        :param host: Host object
+        :param time: datetime object of host update"""
+        strtime = time.strftime(DB_TIME_FORMAT)
+        conn = self._connect_to_db()
+        cr = conn.cursor()
+        cr.execute('''SELECT * FROM hosts WHERE ip=?''', (host.ip, ))
+        dbhost = cr.fetchone()
+        if not dbhost:  # new host!
+            cr.execute('''INSERT INTO hosts(ip, mac, name, vendor, ports, first_joined, last_seen)
+                          VALUES(?,?,?,?,?,?,?)''',
+                       (host.ip, host.mac, host.name, host.vendor, ','.join(host.ports), strtime, strtime))
+            # notify
+            print(time.strftime('%m/%d/%Y %H:%M:%S') + ' > NEW HOST DISCOVERED : ' + str(host))
+        else:
+            cr.execute('''UPDATE hosts SET last_seen = ?,
+                                           mac = ?,
+                                           name = ?,
+                                           vendor = ?,
+                                           ports = ?
+                          WHERE id = ?''',
+                       (strtime, host.mac, host.name, host.vendor, ','.join(host.ports), dbhost[0]))
         conn.commit()
         conn.close()
 
     def _create_tables(self):
         conn = self._connect_to_db()
         cr = conn.cursor()
+        # event history
         cr.execute('''CREATE TABLE IF NOT EXISTS history(
                           id INTEGER PRIMARY KEY NOT NULL,
                           host TEXT NOT NULL,
                           type INTEGER NOT NULL,
-                          desc TEXT NOT NULL,
+                          desc TEXT,
                           time TEXT NOT NULL)''')
+        # known hosts (arp-scanned)
         cr.execute('''CREATE TABLE IF NOT EXISTS hosts(
                           id INTEGER PRIMARY KEY NOT NULL,
-                          ip TEXT UNIQUE NOT NULL)''')
+                          ip TEXT UNIQUE NOT NULL,
+                          mac TEXT UNIQUE,
+                          name TEXT,
+                          vendor TEXT,
+                          ports TEXT,
+                          first_joined TEXT NOT NULL,
+                          last_seen TEXT NOT NULL)''')
         conn.commit()
         conn.close()
 
