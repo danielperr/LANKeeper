@@ -6,39 +6,39 @@ import sys
 
 import scan as s
 import history as h
+from dbagent import DBAgent
+from scanresult import ScanResult
 
 
 class Manager:
 
-    def __init__():
+    def __init__(self):
+
+        self._dbagent = DBAgent(new=1)
 
         self.scanner_queue = Queue()
-
         self.scanner_conn, scanner_side = Pipe()
-
-        scanner_object = s.Scanner
         self.scanner_process = Process(
-            target=scanner_object,
+            target=s.Scanner,
             args=(scanner_side, ))
         self.scanner_process.daemon = True
 
-        print('starting scanner process')
+    def start(self):
+
         self.scanner_process.start()
 
-        conn_list = [scanner_conn]
-
         while True:
-            readables = list(filter(lambda c: c.poll(), conn_list))
-
+            readables = list(filter(lambda c: c.poll(), [self.scanner_conn]))
             for readable in readables:
-                print(str(readable.recv()))
-
+                data = readable.recv()
+                if isinstance(data, ScanResult):
+                    self._dbagent.add_scan_result(data)
             if not self.scanner_queue.empty():
-                self.scanner_conn.send(scanner_queue.get())
+                self.scanner_conn.send(self.scanner_queue.get())
 
         self.scanner_process.join()
 
-    def command_scanner(command):
+    def command_scanner(self, command):
         self.scanner_queue.put(command)
 
 
@@ -47,6 +47,7 @@ def main():
         try:
             m = Manager()
             m.command_scanner(('progressive_scan', ('10.100.102.0/24', s.NAME + s.VENDOR)))
+            m.start()
         except KeyboardInterrupt:
             print('done.')
 

@@ -108,7 +108,9 @@ class Scanner (object):
         :param interval: the time interval between scans in seconds
         :param kwargs: scapy kwargs"""
         while 1:
+            print('starting scan.')
             hosts = self.scan(targets, options, **kwargs)
+            print('scan done.')
             self._manager_conn.send(ScanResult(hosts, datetime.now()))
             time.sleep(interval)
 

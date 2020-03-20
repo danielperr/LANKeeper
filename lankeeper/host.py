@@ -4,8 +4,9 @@
 TEXT_NORMAL = '\033[0m'
 TEXT_BOLD = '\033[1m'
 
+
 class Host (object):
-    
+
     def __init__(self,
                  ip: str,
                  mac: str = '',
