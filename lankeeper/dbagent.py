@@ -15,7 +15,7 @@ import sqlite3
 
 
 DB_PATH = os.path.expandvars(r'%APPDATA%\LANKeeper\lankeeper.db')
-DATETIME_FORMAT = r'%m/%d/%y@%H:%M:%S'
+DATETIME_FORMAT = r'%m/%d/%Y@%H:%M:%S'  # change of this format REQUIRES table drop
 
 
 class DBAgent:

@@ -14,6 +14,6 @@ class ScanResult (object):
         self.time = time
 
     def __str__(self):
-        return '%s scan result: (%s hosts up)\n:%s' % (self.time.strftime(r'%m/%d/%y@%H:%M:%S'),
+        return '%s scan result: (%s hosts up)\n:%s' % (self.time.strftime(r'%m/%d/%Y@%H:%M:%S'),
                                                        len(self.hosts),
                                                        '\n'.join(map(str, self.hosts)))
