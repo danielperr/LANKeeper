@@ -62,20 +62,16 @@ class DBAgent:
     def add_scan_result(self, scan_result):
         """Update hosts from ScanResult object"""
         strtime = scan_result.time.strftime(DATETIME_FORMAT)
-        print('a')
         with self._connect() as conn:
             cur = conn.cursor()
             for host in scan_result.hosts:
-                print('b')
                 cur.execute('''SELECT id FROM hosts WHERE ip=?''', (host.ip, ))
                 dbhost = cur.fetchone()
                 if not dbhost:  # new host
-                    print('c')
                     cur.execute('''INSERT INTO hosts(
                         ip, mac, name, vendor, ports, first_joined, last_seen) VALUES(?,?,?,?,?,?,?)''',
                                 (host.ip, host.mac, host.name, host.vendor, ','.join(host.ports), strtime, strtime))
                 else:
-                    print('d')
                     cur.execute('''UPDATE hosts SET last_seen = ?,
                                                    mac = ?,
                                                    name = ?,
@@ -96,7 +92,7 @@ class DBAgent:
             return [(0,
                      x[1] if x[1] else x[0],
                      x[2],
-                     dba.pretty_date(datetime.strptime(x[3], DATETIME_FORMAT)))
+                     self.pretty_date(datetime.strptime(x[3], DATETIME_FORMAT)))
                     for x in result]
 
     def pretty_date(self, time=False):

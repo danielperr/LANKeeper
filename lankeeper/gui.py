@@ -6,6 +6,7 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
 
 import sys
+import os
 
 MIN_SIZE = 900, 720
 TITLE_FRAME_HEIGHT = 50
@@ -15,13 +16,18 @@ COL_LANKEEPER_BLUE = '#1760B3'
 COL_PRIMARY_GRAY = '#EEEEEE'
 COL_PRIMATY_TEXT = '#333333'
 
-SRC_BANNER_WHITE = './resources/images/banner-white.png'
+SRC_BANNER_WHITE = os.getcwd() + '\\lankeeper\\resources\\images\\white-banner.png'
 
 
 class MainWindow (QMainWindow):
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, loopCallback, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+        self.loopCallback = loopCallback
+        self.loopTimer = QTimer(self)
+        self.loopTimer.timeout.connect(self.loopCallback)
+        self.loopTimer.start(10)
 
         self.setWindowTitle('LANKeeper')
         self.setMinimumSize(*MIN_SIZE)
@@ -87,7 +93,29 @@ class MainWindow (QMainWindow):
         self.devicesTable = Table(1, 4)
         self.devicesPanel.mainFrame.layout().addWidget(self.devicesTable)
         self.devicesTable.setHorizontalHeaderLabels(['', 'Device', 'Vendor', 'Last seen'])
-        self.devicesTable.set
+        self.devicesTable.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.devicesTable.horizontalHeader().setSectionResizeMode(0, QHeaderView.Fixed)
+        self.devicesTable.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        self.devicesTable.horizontalHeader().setStretchLastSection(True)
+        self.devicesTable.horizontalHeader().setStyleSheet('''::section{
+                                                                Background-color: %s;
+                                                                border: 0;
+                                                                height: 36px;
+                                                              }''' % COL_PRIMARY_GRAY)
+        self.devicesTable.setShowGrid(False)
+        headerFont = QFont('Segoe UI', 12, QFont.DemiBold)
+        headerFont.setStyleStrategy(QFont.PreferAntialias)
+        self.devicesTable.horizontalHeader().setFont(headerFont)
+        itemFont = QFont('Segoe UI', 10)
+        itemFont.setStyleStrategy(QFont.PreferAntialias)
+        self.devicesTable.setFont(itemFont)
+        self.devicesTable.verticalHeader().setVisible(False)
+        self.devicesTable.setColumnWidth(0, 36)
+        self.devicesTable.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.devicesTable.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.devicesTable.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.devicesTable.doubleClicked.connect(self._deviceSelected)
+        # self.devicesTable.set
         #       </devicesTable>
         #     </devicesPanel>
         #     <monitoringPanel>
@@ -99,6 +127,9 @@ class MainWindow (QMainWindow):
         # </mainFrame>
         self.show()
 
+    def _deviceSelected(self, item):
+        pass
+
 
 class Panel (QFrame):
 
@@ -109,7 +140,7 @@ class Panel (QFrame):
         self.setLayout(QVBoxLayout())
         self.layout().setContentsMargins(12, 0, 12, 0)
         self.setStyleSheet('background-color: white; border-radius: 2px;')
-        shadow = QGraphicsDropShadowEffect(blurRadius=10, xOffset=0, yOffset=3, color=QColor(0, 0, 0, 0.2*255))
+        shadow = QGraphicsDropShadowEffect(blurRadius=10, xOffset=0, yOffset=3, color=QColor(0, 0, 0, int(0.2*255)))
         self.setGraphicsEffect(shadow)
         # <titleFrame>
         self.titleFrame = QFrame()
@@ -151,8 +182,12 @@ class Table (QTableWidget):
         super().__init__(r, c, *args, **kwargs)
 
 
+def callback():
+    pass
+
+
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    window = MainWindow()
+    window = MainWindow(callback)
     # table = Table(15, 3)
     sys.exit(app.exec_())
