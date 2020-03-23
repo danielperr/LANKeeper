@@ -4,8 +4,9 @@
 TEXT_NORMAL = '\033[0m'
 TEXT_BOLD = '\033[1m'
 
+
 class Host (object):
-    
+
     def __init__(self,
                  ip: str,
                  mac: str = '',
@@ -19,7 +20,7 @@ class Host (object):
         self.ports = ports
 
     def __str__(self):
-        return '\033[4m%s\033[0m%s - \033[4m%s\033[0m%s%s' % (
+        return '%s%s - %s%s%s' % (
             self.ip,
             ' (%s)' % self.name if self.name else '',
             self.mac,

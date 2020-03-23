@@ -1,16 +1,19 @@
 # LANKeeper (https://github.com/danielperr/LANKeeper)
-# Struct for result of scanning
+# Struct for scan result
 
+from host import Host
 import datetime
-import lankeeper.host
 
 
 class ScanResult (object):
 
     def __init__(self,
-                 hosts: list[lankeeper.host.Host],
-                 starttime: datetime.datetime,
-                 endtime: datetime.datetime):
+                 hosts: list,
+                 time: datetime.datetime):
         self.hosts = hosts
-        self.starttime = starttime
-        self.endtime = endtime
+        self.time = time
+
+    def __str__(self):
+        return '%s scan result: (%s hosts up)\n:%s' % (self.time.strftime(r'%m/%d/%Y@%H:%M:%S'),
+                                                       len(self.hosts),
+                                                       '\n'.join(map(str, self.hosts)))
