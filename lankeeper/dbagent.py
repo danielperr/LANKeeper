@@ -7,6 +7,11 @@ TABLE LIST
 * reports
 * analysis
 * notifications
+
+NOTIFICATOPM LEVELS
+1) info
+2) warning
+3) critical
 """
 
 from datetime import datetime
@@ -43,7 +48,8 @@ class DBAgent:
                           name TEXT,
                           ports TEXT,
                           first_joined TEXT NOT NULL,
-                          last_seen TEXT NOT NULL)''')
+                          last_seen TEXT NOT NULL,
+                          new_device BOOL)''')
             conn.commit()
 
     def _drop(self):
@@ -69,16 +75,23 @@ class DBAgent:
                 dbhost = cur.fetchone()
                 if not dbhost:  # new host
                     cur.execute('''INSERT INTO hosts(
-                        ip, mac, name, vendor, ports, first_joined, last_seen) VALUES(?,?,?,?,?,?,?)''',
-                                (host.ip, host.mac, host.name, host.vendor, ','.join(host.ports), strtime, strtime))
+                        ip, mac, name, vendor, ports, first_joined, last_seen, new_device) VALUES(?,?,?,?,?,?,?,?)''',
+                                (host.ip, host.mac, host.name, host.vendor, ','.join(map(str, host.ports)), strtime, strtime, True))
                 else:
+                    cur.execute('''SELECT id, mac, name, vendor, last_seen, ports FROM hosts WHERE ip = ?''', (host.ip, ))
+                    result = cur.fetchone()
                     cur.execute('''UPDATE hosts SET last_seen = ?,
                                                    mac = ?,
                                                    name = ?,
                                                    vendor = ?,
                                                    ports = ?
                                 WHERE id = ?''',
-                                (strtime, host.mac, host.name, host.vendor, ','.join(host.ports), dbhost[0]))
+                                (strtime if strtime else result[4],
+                                 host.mac if host.mac else result[1],
+                                 host.name if host.name else result[2],
+                                 host.vendor if host.vendor else result[3],
+                                 ','.join(map(str, host.ports)) if host.ports else result[5],
+                                 result[0]))
             conn.commit()
 
     def add_monitor_report(self, need_to_work_this_out):
@@ -86,14 +99,34 @@ class DBAgent:
         pass
 
     def get_devices_info(self):
-        """Get devices info from hosts for GUI"""
+        """Get devices info from hosts for GUI
+        :returns: id_list, data_list"""
         with self._connect() as conn:
-            result = conn.execute('SELECT ip, name, vendor, last_seen FROM hosts')
-            return [(0,
-                     x[1] if x[1] else x[0],
-                     x[2],
-                     self.pretty_date(datetime.strptime(x[3], DATETIME_FORMAT)))
+            result = conn.execute('SELECT id, new_device, ip, name, vendor, last_seen FROM hosts')
+            return [(x[0],
+                     int(x[1]),
+                     x[3] if x[3] else x[2],
+                     x[4],
+                     self.pretty_date(datetime.strptime(x[5], DATETIME_FORMAT)))
                     for x in result]
+
+    def get_device_info(self, device_id):
+        """Get detailed device info"""
+        with self._connect() as conn:
+            result = conn.execute('''SELECT name,
+                                            ip,
+                                            mac,
+                                            vendor,
+                                            first_joined,
+                                            last_seen,
+                                            ports FROM hosts WHERE id = %s''' % device_id)
+            conn.execute('''UPDATE hosts SET new_device = ? WHERE id = ?''', (False, device_id))
+            return list(result)[0]
+
+    def get_new_device_count(self):
+        with self._connect() as conn:
+            result = conn.execute('''SELECT new_device FROM hosts''')
+            return len(list(filter(bool, [x[0] for x in result])))
 
     def pretty_date(self, time=False):
         """

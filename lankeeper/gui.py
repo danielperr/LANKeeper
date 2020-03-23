@@ -17,18 +17,28 @@ COL_PRIMARY_GRAY = '#EEEEEE'
 COL_PRIMATY_TEXT = '#333333'
 
 SRC_BANNER_WHITE = os.getcwd() + '\\lankeeper\\resources\\images\\white-banner.png'
+SRC_LOADING_GIF = os.getcwd() + '\\lankeepzer\\resources\\images\\loading.gif'
+SRC_INFO = os.getcwd() + '\\lankeeper\\resources\\images\\info.png'
+SRC_CHECKMARK = os.getcwd() + '\\lankeeper\\resources\\images\\checkmark.png'
 
 
 class MainWindow (QMainWindow):
 
-    def __init__(self, loopCallback, *args, **kwargs):
+    def __init__(self, loopCallback, scanCallback, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.loopCallback = loopCallback
         self.loopTimer = QTimer(self)
         self.loopTimer.timeout.connect(self.loopCallback)
         self.loopTimer.start(10)
+        self.scanCallback = scanCallback
+        self.scanTimer = QTimer(self)
+        self.scanTimer.timeout.connect(self.scanCallback)
+        self.scanTimer.start(10000)
 
+        self.device_ids = []
+
+    def initUi(self):
         self.setWindowTitle('LANKeeper')
         self.setMinimumSize(*MIN_SIZE)
         centralWidget = QWidget()
@@ -74,6 +84,8 @@ class MainWindow (QMainWindow):
         self.dashboardPanel.panelTitle = 'Dashboard'
         self.dashboardPanel.setMinimumHeight(DASHBOARD_PANEL_HEIGHT)
         self.dashboardPanel.setMaximumHeight(DASHBOARD_PANEL_HEIGHT)
+        self._dbNewDevices = 0
+        self.renderDashboard()
         #     </dashboardPanel>
         #   </dashboardFrame>
         #   <devmonFrame>
@@ -114,7 +126,7 @@ class MainWindow (QMainWindow):
         self.devicesTable.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.devicesTable.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.devicesTable.setSelectionMode(QAbstractItemView.SingleSelection)
-        self.devicesTable.doubleClicked.connect(self._deviceSelected)
+        self.devicesTable.doubleClicked.connect(self.deviceSelected)
         # self.devicesTable.set
         #       </devicesTable>
         #     </devicesPanel>
@@ -127,8 +139,91 @@ class MainWindow (QMainWindow):
         # </mainFrame>
         self.show()
 
-    def _deviceSelected(self, item):
-        pass
+        # <deviceWindow>
+        self.deviceWindow = SmallWindow()
+        self.deviceWindow.setWindowModality(Qt.ApplicationModal)
+        self.deviceWindow.mainPanel.panelTitle = 'Device info'
+        self.deviceWindow.mainPanel.mainFrame.setLayout(QVBoxLayout())
+        self.deviceWindow.deviceLabel = QLabel()
+        self.deviceWindow.mainPanel.mainFrame.layout().addWidget(self.deviceWindow.deviceLabel)
+        # </deviceWindow>
+
+    def renderDashboard(self):
+        self.dashboardPanel.mainFrame.setLayout(QVBoxLayout())
+        self.dbNewDevicesFrame = QFrame()
+        self.dashboardPanel.mainFrame.layout().addWidget(self.dbNewDevicesFrame)
+        self.dbNewDevicesFrame.setLayout(QHBoxLayout())
+        self.dbNewDevicesFrame.layout().setAlignment(Qt.AlignLeft)
+        self.dbNewDevicesIcon = QLabel()
+        self.dbNewDevicesFrame.layout().addWidget(self.dbNewDevicesIcon)
+        pixmap = QPixmap(SRC_INFO if self._dbNewDevices else SRC_CHECKMARK)
+        pixmap = pixmap.scaled(24, 24, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        self.dbNewDevicesIcon.setPixmap(pixmap)
+        self.dbNewDevicesIcon.setAlignment(Qt.AlignLeft)
+        self.dbNewDevicesLabel = QLabel()
+        self.dbNewDevicesFrame.layout().addWidget(self.dbNewDevicesLabel)
+        text = 'No new devices detected.'
+        if self._dbNewDevices == 1:
+            text = '1 new device detected.'
+        elif self._dbNewDevices > 1:
+            text = '%s new devices detected.' % self._dbNewDevices
+        self.dbNewDevicesLabel.setText(text)
+        self.dbNewDevicesLabel.setAlignment(Qt.AlignLeft)
+        font = QFont('Segoe UI', 12)
+        font.setStyleStrategy(QFont.PreferAntialias)
+        self.dbNewDevicesLabel.setFont(font)
+
+    @property
+    def dbNewDevices(self):
+        return self._dbNewDevices
+
+    @dbNewDevices.setter
+    def dbNewDevices(self, value):
+        self._dbNewDevices = value
+        #self.renderDashboard()
+        pixmap = QPixmap(SRC_INFO if self._dbNewDevices else SRC_CHECKMARK)
+        pixmap = pixmap.scaled(24, 24, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        self.dbNewDevicesIcon.setPixmap(pixmap)
+        text = 'No new devices detected.'
+        if self._dbNewDevices == 1:
+            text = '1 new device detected.'
+        elif self._dbNewDevices > 1:
+            text = '%s new devices detected.' % self._dbNewDevices
+        self.dbNewDevicesLabel.setText(text)
+
+
+class SmallWindow(QMainWindow):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        centralWidget = QWidget()
+        self.setCentralWidget(centralWidget)
+        self.centralWidget().setLayout(QVBoxLayout())
+        self.centralWidget().layout().setContentsMargins(0, 0, 0, 0)
+        self.centralWidget().layout().setSpacing(0)
+        self.statusBar().showMessage('')
+        # <titleFrame>
+        self.titleFrame = QFrame()
+        self.centralWidget().layout().addWidget(self.titleFrame)
+        self.titleFrame.setLayout(QHBoxLayout())
+        self.titleFrame.layout().setContentsMargins(20, 0, 0, 0)
+        self.titleFrame.setStyleSheet('background-color: %s;' % COL_LANKEEPER_BLUE)
+        self.titleFrame.setMinimumHeight(int(TITLE_FRAME_HEIGHT/2))
+        self.titleFrame.setMaximumHeight(int(TITLE_FRAME_HEIGHT/2))
+        # </titleFrame>
+        # <mainFrame>
+        self.mainFrame = QFrame()
+        self.centralWidget().layout().addWidget(self.mainFrame)
+        self.mainFrame.setStyleSheet('background-color: %s;' % COL_PRIMARY_GRAY)
+        self.mainFrame.setLayout(QVBoxLayout())
+        self.mainFrame.layout().setContentsMargins(18, 10, 18, 10)
+        self.mainFrame.layout().setSpacing(0)
+        #   <mainPanel>
+        self.mainPanel = Panel()
+        self.mainFrame.layout().addWidget(self.mainPanel)
+        #   </mainPanel>
+        # </mainFrame>
 
 
 class Panel (QFrame):
@@ -139,7 +234,7 @@ class Panel (QFrame):
 
         self.setLayout(QVBoxLayout())
         self.layout().setContentsMargins(12, 0, 12, 0)
-        self.setStyleSheet('background-color: white; border-radius: 2px;')
+        self .setStyleSheet('background-color: white; border-radius: 2px;')
         shadow = QGraphicsDropShadowEffect(blurRadius=10, xOffset=0, yOffset=3, color=QColor(0, 0, 0, int(0.2*255)))
         self.setGraphicsEffect(shadow)
         # <titleFrame>
@@ -188,6 +283,8 @@ def callback():
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    window = MainWindow(callback)
+    # window = MainWindow(callback)
     # table = Table(15, 3)
+    window = SmallWindow()
+    window.show()
     sys.exit(app.exec_())
