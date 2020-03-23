@@ -7,6 +7,11 @@ TABLE LIST
 * reports
 * analysis
 * notifications
+
+NOTIFICATOPM LEVELS
+1) info
+2) warning
+3) critical
 """
 
 from datetime import datetime
@@ -43,7 +48,8 @@ class DBAgent:
                           name TEXT,
                           ports TEXT,
                           first_joined TEXT NOT NULL,
-                          last_seen TEXT NOT NULL)''')
+                          last_seen TEXT NOT NULL,
+                          new_device BOOL)''')
             conn.commit()
 
     def _drop(self):
@@ -69,8 +75,8 @@ class DBAgent:
                 dbhost = cur.fetchone()
                 if not dbhost:  # new host
                     cur.execute('''INSERT INTO hosts(
-                        ip, mac, name, vendor, ports, first_joined, last_seen) VALUES(?,?,?,?,?,?,?)''',
-                                (host.ip, host.mac, host.name, host.vendor, ','.join(map(str, host.ports)), strtime, strtime))
+                        ip, mac, name, vendor, ports, first_joined, last_seen, new_device) VALUES(?,?,?,?,?,?,?,?)''',
+                                (host.ip, host.mac, host.name, host.vendor, ','.join(map(str, host.ports)), strtime, strtime, True))
                 else:
                     cur.execute('''SELECT id, mac, name, vendor, last_seen, ports FROM hosts WHERE ip = ?''', (host.ip, ))
                     result = cur.fetchone()
@@ -96,12 +102,12 @@ class DBAgent:
         """Get devices info from hosts for GUI
         :returns: id_list, data_list"""
         with self._connect() as conn:
-            result = conn.execute('SELECT id, ip, name, vendor, last_seen FROM hosts')
+            result = conn.execute('SELECT id, new_device, ip, name, vendor, last_seen FROM hosts')
             return [(x[0],
-                     0,
-                     x[2] if x[2] else x[1],
-                     x[3],
-                     self.pretty_date(datetime.strptime(x[4], DATETIME_FORMAT)))
+                     int(x[1]),
+                     x[3] if x[3] else x[2],
+                     x[4],
+                     self.pretty_date(datetime.strptime(x[5], DATETIME_FORMAT)))
                     for x in result]
 
     def get_device_info(self, device_id):
@@ -114,8 +120,14 @@ class DBAgent:
                                             first_joined,
                                             last_seen,
                                             ports FROM hosts WHERE id = %s''' % device_id)
+            conn.execute('''UPDATE hosts SET new_device = ? WHERE id = ?''', (False, device_id))
             return list(result)[0]
 
+    def get_new_device_count(self):
+        with self._connect() as conn:
+            result = conn.execute('''SELECT new_device FROM hosts''')
+            return len(list(filter(bool, [x[0] for x in result])))
+    
     def pretty_date(self, time=False):
         """
         Get a datetime object or a int() Epoch timestamp and return a

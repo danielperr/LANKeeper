@@ -17,6 +17,9 @@ COL_PRIMARY_GRAY = '#EEEEEE'
 COL_PRIMATY_TEXT = '#333333'
 
 SRC_BANNER_WHITE = os.getcwd() + '\\lankeeper\\resources\\images\\white-banner.png'
+SRC_LOADING_GIF = os.getcwd() + '\\lankeepzer\\resources\\images\\loading.gif'
+SRC_INFO = os.getcwd() + '\\lankeeper\\resources\\images\\info.png'
+SRC_CHECKMARK = os.getcwd() + '\\lankeeper\\resources\\images\\checkmark.png'
 
 
 class MainWindow (QMainWindow):
@@ -81,6 +84,8 @@ class MainWindow (QMainWindow):
         self.dashboardPanel.panelTitle = 'Dashboard'
         self.dashboardPanel.setMinimumHeight(DASHBOARD_PANEL_HEIGHT)
         self.dashboardPanel.setMaximumHeight(DASHBOARD_PANEL_HEIGHT)
+        self._dbNewDevices = 0
+        self.renderDashboard()
         #     </dashboardPanel>
         #   </dashboardFrame>
         #   <devmonFrame>
@@ -142,6 +147,49 @@ class MainWindow (QMainWindow):
         self.deviceWindow.deviceLabel = QLabel()
         self.deviceWindow.mainPanel.mainFrame.layout().addWidget(self.deviceWindow.deviceLabel)
         # </deviceWindow>
+
+    def renderDashboard(self):
+        self.dashboardPanel.mainFrame.setLayout(QVBoxLayout())
+        self.dbNewDevicesFrame = QFrame()
+        self.dashboardPanel.mainFrame.layout().addWidget(self.dbNewDevicesFrame)
+        self.dbNewDevicesFrame.setLayout(QHBoxLayout())
+        self.dbNewDevicesFrame.layout().setAlignment(Qt.AlignLeft)
+        self.dbNewDevicesIcon = QLabel()
+        self.dbNewDevicesFrame.layout().addWidget(self.dbNewDevicesIcon)
+        pixmap = QPixmap(SRC_INFO if self._dbNewDevices else SRC_CHECKMARK)
+        pixmap = pixmap.scaled(24, 24, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        self.dbNewDevicesIcon.setPixmap(pixmap)
+        self.dbNewDevicesIcon.setAlignment(Qt.AlignLeft)
+        self.dbNewDevicesLabel = QLabel()
+        self.dbNewDevicesFrame.layout().addWidget(self.dbNewDevicesLabel)
+        text = 'No new devices detected.'
+        if self._dbNewDevices == 1:
+            text = '1 new device detected.'
+        elif self._dbNewDevices > 1:
+            text = '%s new devices detected.' % self._dbNewDevices
+        self.dbNewDevicesLabel.setText(text)
+        self.dbNewDevicesLabel.setAlignment(Qt.AlignLeft)
+        font = QFont('Segoe UI', 12)
+        font.setStyleStrategy(QFont.PreferAntialias)
+        self.dbNewDevicesLabel.setFont(font)
+
+    @property
+    def dbNewDevices(self):
+        return self._dbNewDevices
+
+    @dbNewDevices.setter
+    def dbNewDevices(self, value):
+        self._dbNewDevices = value
+        #self.renderDashboard()
+        pixmap = QPixmap(SRC_INFO if self._dbNewDevices else SRC_CHECKMARK)
+        pixmap = pixmap.scaled(24, 24, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        self.dbNewDevicesIcon.setPixmap(pixmap)
+        text = 'No new devices detected.'
+        if self._dbNewDevices == 1:
+            text = '1 new device detected.'
+        elif self._dbNewDevices > 1:
+            text = '%s new devices detected.' % self._dbNewDevices
+        self.dbNewDevicesLabel.setText(text)
 
 
 class SmallWindow(QMainWindow):
