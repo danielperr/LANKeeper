@@ -127,7 +127,7 @@ class DBAgent:
         with self._connect() as conn:
             result = conn.execute('''SELECT new_device FROM hosts''')
             return len(list(filter(bool, [x[0] for x in result])))
-
+    
     def pretty_date(self, time=False):
         """
         Get a datetime object or a int() Epoch timestamp and return a
