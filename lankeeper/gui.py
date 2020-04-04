@@ -180,7 +180,7 @@ class MainWindow (QMainWindow):
     @dbNewDevices.setter
     def dbNewDevices(self, value):
         self._dbNewDevices = value
-        #self.renderDashboard()
+        # self.renderDashboard()
         pixmap = QPixmap(SRC_INFO if self._dbNewDevices else SRC_CHECKMARK)
         pixmap = pixmap.scaled(24, 24, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         self.dbNewDevicesIcon.setPixmap(pixmap)

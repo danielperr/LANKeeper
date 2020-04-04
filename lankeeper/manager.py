@@ -31,6 +31,7 @@ class Manager:
         self.main_window = MainWindow(self.loop, self.scan)
         self.main_window.deviceSelected = self._device_selected
         self.main_window.initUi()
+        self.main_window.dbNewDevices = self._dbagent.get_new_device_count()
         self.scan()
         self._update_devices(True)
         sys.exit(self.app.exec_())
