@@ -2,17 +2,13 @@
 # database agent
 
 """
-TABLE LIST
-* hosts
-* reports
-* analysis
-* notifications
-
 NOTIFICATOPM LEVELS
 1) info
 2) warning
 3) critical
 """
+
+from device import Device
 
 from datetime import datetime
 import os
@@ -76,9 +72,11 @@ class DBAgent:
                 if not dbhost:  # new host
                     cur.execute('''INSERT INTO hosts(
                         ip, mac, name, vendor, ports, first_joined, last_seen, new_device) VALUES(?,?,?,?,?,?,?,?)''',
-                                (host.ip, host.mac, host.name, host.vendor, ','.join(map(str, host.ports)), strtime, strtime, True))
+                                (host.ip, host.mac, host.name, host.vendor,
+                                 ','.join(map(str, host.ports)), strtime, strtime, True))
                 else:
-                    cur.execute('''SELECT id, mac, name, vendor, last_seen, ports FROM hosts WHERE ip = ?''', (host.ip, ))
+                    cur.execute('''SELECT id, mac, name, vendor, last_seen, ports FROM hosts WHERE ip = ?''',
+                                (host.ip, ))
                     result = cur.fetchone()
                     cur.execute('''UPDATE hosts SET last_seen = ?,
                                                    mac = ?,
@@ -113,21 +111,31 @@ class DBAgent:
     def get_device_info(self, device_id):
         """Get detailed device info"""
         with self._connect() as conn:
-            result = conn.execute('''SELECT name,
-                                            ip,
-                                            mac,
-                                            vendor,
-                                            first_joined,
-                                            last_seen,
-                                            ports FROM hosts WHERE id = %s''' % device_id)
+            cur = conn.cursor()
+            cur.execute('''SELECT name,
+                                  ip,
+                                  mac,
+                                  vendor,
+                                  first_joined,
+                                  last_seen,
+                                  ports FROM hosts WHERE id = %s''' % device_id)
             conn.execute('''UPDATE hosts SET new_device = ? WHERE id = ?''', (False, device_id))
-            return list(result)[0]
+            result = cur.fetchone()
+            conn.commit()
+            ports = list(map(int, result[6].split(','))) if result[6] else []
+            return Device(ip=result[1],
+                          mac=result[2],
+                          name=result[0],
+                          vendor=result[3],
+                          ports=ports,
+                          first_joined=datetime.strptime(result[4], DATETIME_FORMAT),
+                          last_seen=datetime.strptime(result[5], DATETIME_FORMAT))
 
     def get_new_device_count(self):
         with self._connect() as conn:
             result = conn.execute('''SELECT new_device FROM hosts''')
             return len(list(filter(bool, [x[0] for x in result])))
-    
+
     def pretty_date(self, time=False):
         """
         Get a datetime object or a int() Epoch timestamp and return a

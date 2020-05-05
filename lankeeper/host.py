@@ -1,9 +1,6 @@
 # LANKeeper (https://github.com/danielperr/LANKeeper)
 # Remote host machine struct
 
-TEXT_NORMAL = '\033[0m'
-TEXT_BOLD = '\033[1m'
-
 
 class Host (object):
 
@@ -12,18 +9,21 @@ class Host (object):
                  mac: str = '',
                  name: str = '',
                  vendor: str = '',
-                 ports: list = []):
+                 ports: list = [],
+                 os: str = ''):
         self.ip = ip
         self.mac = mac
         self.name = name
         self.vendor = vendor
         self.ports = ports
+        self.os = os
 
     def __str__(self):
-        return '%s%s - %s%s%s' % (
+        return '%s%s - %s%s%s%s' % (
             self.ip,
             ' (%s)' % self.name if self.name else '',
             self.mac,
             ' (%s)' % self.vendor if self.vendor else '',
+            ' running %s' % self.os if self.os else '',
             '\nPorts: [%s]' % ', '.join(map(str, self.ports)) if self.ports else ''
         )

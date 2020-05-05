@@ -1,3 +1,7 @@
+# pylint: skip-file
+# LANKeeper (https://github.com/danielperr/LANKeeper)
+# Manager (main file)
+
 from multiprocessing import Process, Pipe
 from queue import Queue
 import ctypes
@@ -28,15 +32,17 @@ class Manager:
         self.scanner_process.start()
 
         self.app = QApplication(sys.argv)
-        self.main_window = MainWindow(self.loop, self.scan)
-        self.main_window.deviceSelected = self._device_selected
+        self.main_window = MainWindow(loop_cb=self._loop,
+                                      scan_cb=self._scan,
+                                      device_data_cb=self._get_device_data)
+        self.main_window.get_device_data = self._get_device_data
         self.main_window.initUi()
         self.main_window.dbNewDevices = self._dbagent.get_new_device_count()
-        self.scan()
+        self._scan()
         self._update_devices(True)
         sys.exit(self.app.exec_())
 
-    def loop(self):
+    def _loop(self):
         readables = list(filter(lambda c: c.poll(), [self.scanner_conn]))
         for readable in readables:
             data = readable.recv()
@@ -45,11 +51,11 @@ class Manager:
                 self._update_devices()
                 self.main_window.dbNewDevices = self._dbagent.get_new_device_count()
                 if self.main_window.deviceWindow.isVisible():
-                    self._update_device_window(self._dbagent.get_device_info(self.open_device_id))
+                    self.main_window.deviceWindow.device = self._dbagent.get_device_info(self.main_window.openDeviceId)
         if not self.scanner_queue.empty():
             self.scanner_conn.send(self.scanner_queue.get())
 
-    def scan(self):
+    def _scan(self):
         if self.scanner_queue.empty():
             self.command_scanner(('scan', ('10.100.102.0/24', s.NAME + s.VENDOR)))
 
@@ -78,6 +84,10 @@ class Manager:
         self.open_device_id = self.main_window.device_ids[item.row()]
         self._update_device_window(self._dbagent.get_device_info(self.open_device_id))
         self.main_window.deviceWindow.show()
+
+    def _get_device_data(self, device_id):
+        result = self._dbagent.get_device_info(device_id)
+        return result
 
     def _update_device_window(self, data, scan_clicked=False):
         ports = ''
