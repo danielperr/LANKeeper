@@ -10,4 +10,5 @@ class MonitorGroup:
         self.ips = ips
 
     def __str__(self):
-        return f'Monitor group {self.name} consists of {len(self.ips)} hosts and applies {len(self.detectors)} detectors'
+        return f'Monitor group {self.name} consists of {len(self.ips)}' + \
+               f' hosts and applies {len(self.detectors)} detectors'
