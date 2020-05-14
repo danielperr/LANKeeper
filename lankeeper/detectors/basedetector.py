@@ -4,6 +4,11 @@ from scapy.all import packet as scapypacket
 
 
 class BaseDetector (ABC):
+    """Detector abstract base class"""
+
+    def name(self):
+        """Name of the detector to appear on lists and menus"""
+        raise NotImplementedError
 
     @classmethod
     @abstractmethod

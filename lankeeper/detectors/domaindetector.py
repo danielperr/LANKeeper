@@ -6,6 +6,7 @@ from scapy.all import *
 
 class DomainDetector (BaseDetector):
 
+    name = 'Domain'
     detect_rate = 10  # pkts/sec
 
     def __init__(self, forbidden_domains: [str]):

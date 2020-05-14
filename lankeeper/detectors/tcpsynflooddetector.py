@@ -38,6 +38,7 @@ class Host (object):
 
 class TcpSynFloodDetector (BaseDetector):
 
+    name = 'TCP flood attack'
     detect_rate = 10  # pkts/sec
 
     def __init__(self):

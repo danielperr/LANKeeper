@@ -9,6 +9,8 @@ NOTIFICATOPM LEVELS
 """
 
 from device import Device
+from monitorgroup import MonitorGroup
+from detectors.detectors import default_detectors
 
 from datetime import datetime
 import os
@@ -21,16 +23,17 @@ DATETIME_FORMAT = r'%m/%d/%Y@%H:%M:%S'  # change of this format REQUIRES table d
 
 class DBAgent:
 
-    def __init__(self, **kwargs):
+    def __init__(self, *, new=False, db_path=DB_PATH):
         """
-        :keyword args:
-            * new (bool): whether to create a fresh db
+        new (bool): whether to create a fresh db
+        db_path (str): database file path
         """
-        self.path = kwargs.get('db_path', DB_PATH)
-        new = kwargs.get('new', False)
+        self.path = db_path
         if new:
             self._drop()
         self._create()
+        if new:
+            self.add_mg(MonitorGroup(name='Default Group', detectors=default_detectors))
 
     def _create(self):
         """Create the tables"""
@@ -46,6 +49,11 @@ class DBAgent:
                           first_joined TEXT NOT NULL,
                           last_seen TEXT NOT NULL,
                           new_device BOOL)''')
+            cur.execute('''CREATE TABLE IF NOT EXISTS monitorgroups(
+                          id INTEGER PRIMARY KEY NOT NULL,
+                          name TEXT UNIQUE NOT NULL,
+                          ips TEXT,
+                          detectors TEXT)''')
             conn.commit()
 
     def _drop(self):
@@ -53,6 +61,7 @@ class DBAgent:
         with self._connect() as conn:
             cur = conn.cursor()
             cur.execute('''DROP TABLE IF EXISTS hosts''')
+            cur.execute('''DROP TABLE IF EXISTS monitorgroups''')
             conn.commit()
 
     def _connect(self):
@@ -61,6 +70,7 @@ class DBAgent:
                 pass
         return sqlite3.connect(self.path)
 
+    # <hosts>
     def add_scan_result(self, scan_result):
         """Update hosts from ScanResult object"""
         strtime = scan_result.time.strftime(DATETIME_FORMAT)
@@ -91,10 +101,6 @@ class DBAgent:
                                  ','.join(map(str, host.ports)) if host.ports else result[5],
                                  result[0]))
             conn.commit()
-
-    def add_monitor_report(self, need_to_work_this_out):
-        """Add activity report from monitor"""
-        pass
 
     def get_devices_info(self):
         """Get devices info from hosts for GUI
@@ -135,6 +141,34 @@ class DBAgent:
         with self._connect() as conn:
             result = conn.execute('''SELECT new_device FROM hosts''')
             return len(list(filter(bool, [x[0] for x in result])))
+    # </hosts>
+
+    # <monitor groups>
+    def add_mg(self, mg: MonitorGroup):  # TODO: try-catch this if name already exists
+        with self._connect() as conn:
+            cur = conn.cursor()
+            cur.execute('INSERT INTO monitorgroups(name, ips, detectors) VALUES(?,?,?)',
+                        (mg.name, ','.join(sorted(mg.ips)), ','.join(sorted(map(str, mg.detectors)))))
+            conn.commit()
+
+    def remove_mg(self, name: str):
+        with self._connect() as conn:
+            cur = conn.cursor()
+            cur.execute('DELETE FROM monitorgroups WHERE name = ?', (name, ))
+            conn.commit()
+
+    def get_mg(self, name: str) -> MonitorGroup:
+        with self._connect() as conn:
+            cur = conn.cursor()
+            cur.execute('SELECT ips, detectors FROM monitorgroups WHERE name = ?', (name, ))
+            result = cur.fetchone()
+            conn.execute()
+            return MonitorGroup(name, ips=set(result[0].split(',')), detectors=set(result[1].split(',')))
+    # </monitor groups>
+
+    def add_monitor_report(self, need_to_work_this_out):
+        """Add activity report from monitor"""
+        pass
 
     def pretty_date(self, time=False):
         """
