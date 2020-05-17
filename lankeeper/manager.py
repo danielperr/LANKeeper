@@ -32,20 +32,21 @@ class Manager:
         self.scanner_process.start()
 
         self.app = QApplication(sys.argv)
-        self.main_window = MainWindow(loop_cb=self._loop,
-                                      scan_cb=self._scan,
-                                      device_data_cb=self._get_device_data)
-        self.main_window.get_device_data = self._get_device_data
+        self.app.setStyle('fusion')
+        self.main_window = MainWindow(self)
+        self.main_window.get_device_data = self.get_device_data
         self.main_window.initUi()
         self.main_window.dbNewDevices = self._dbagent.get_new_device_count()
-        self._scan()
+        self.scan()
         self._update_devices(True)
+        self._update_mgs()
         sys.exit(self.app.exec_())
 
     def command_scanner(self, command):
         self.scanner_queue.put(command)
 
-    def _loop(self):
+    # Callback methods
+    def loop(self):
         readables = list(filter(lambda c: c.poll(), [self.scanner_conn]))
         for readable in readables:
             data = readable.recv()
@@ -58,19 +59,29 @@ class Manager:
         if not self.scanner_queue.empty():
             self.scanner_conn.send(self.scanner_queue.get())
 
-    def _scan(self):
+    def scan(self):
         if self.scanner_queue.empty():
             self.command_scanner(('scan', ('10.100.102.0/24', s.NAME + s.VENDOR)))
 
+    def get_device_data(self, device_id):
+        result = self._dbagent.get_device_info(device_id)
+        return result
+
+    def delete_mgs(self, mg_ids):
+        for mgid in mg_ids:
+            self._dbagent.remove_mg(mgid)
+        self._update_mgs()
+
+    # Private methods
     def _update_devices(self, loading=False):
         devices = self._dbagent.get_devices_info()
         if not devices:
             return
-        self.main_window.updateDevices(devices, loading)
+        self.main_window.updateDevicesTable(devices, loading)
 
-    def _get_device_data(self, device_id):
-        result = self._dbagent.get_device_info(device_id)
-        return result
+    def _update_mgs(self):
+        mgs = self._dbagent.get_mgs()
+        self.main_window.updateMGtable(mgs)
 
     def _device_scan_clicked(self, ip, mac):
         self.main_window.deviceWindow.deviceLabel.linkActivated.disconnect()

@@ -151,11 +151,17 @@ class DBAgent:
                         (mg.name, ','.join(sorted(mg.ips)), ','.join(sorted(map(str, mg.detectors)))))
             conn.commit()
 
-    def remove_mg(self, name: str):
+    def remove_mg(self, mgid: int):
         with self._connect() as conn:
             cur = conn.cursor()
-            cur.execute('DELETE FROM monitorgroups WHERE name = ?', (name, ))
+            cur.execute('DELETE FROM monitorgroups WHERE id = ?', (mgid, ))
             conn.commit()
+
+    def get_mgs(self) -> list:
+        with self._connect() as conn:
+            result = conn.execute('SELECT id, name, ips, detectors FROM monitorgroups')
+            return [(x[0], MonitorGroup(name=x[1], ips=x[2].split(','), detectors=x[3].split(',')))
+                    for x in result]
 
     def get_mg(self, name: str) -> MonitorGroup:
         with self._connect() as conn:

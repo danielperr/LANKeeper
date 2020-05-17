@@ -25,6 +25,7 @@ COL_LANKEEPER_BLUE = '#1760B3'
 COL_PRIMARY_GRAY = '#EEEEEE'
 COL_PRIMARY_TEXT = '#333333'
 COL_SCROLLBAR = '#BBBBBB'
+COL_SELECTED_BG = '#f0f7ff'
 
 SRC_BANNER_WHITE = os.getcwd() + r'\lankeeper\resources\images\white-banner.png'
 SRC_LOADING_GIF = os.getcwd() + r'\lankeeper\resources\images\loading.gif'
@@ -37,28 +38,22 @@ LABEL_STYLESHEET = f'font: 13px "Segoe UI"; color: {COL_PRIMARY_TEXT}'
 
 class MainWindow (QMainWindow):
 
-    def __init__(self, *args, loop_cb, scan_cb, device_data_cb,  **kwargs):
-        """App main window
-
-        Kwargs:
-            loop_cb (function): function to be executed every 10ms
-            scan_cb (function): function to be executed every 10s
-            device_data_cb (function): function to be executed when device data is required
-        """
+    def __init__(self, manager, *args, **kwargs):
+        """App main window"""
         super().__init__(*args, **kwargs)
 
-        self.loopCallback = loop_cb
+        self._manager = manager
         self.loopTimer = QTimer(self)
-        self.loopTimer.timeout.connect(self.loopCallback)
+        self.loopTimer.timeout.connect(self._manager.loop)
         self.loopTimer.start(10)
-        self.scanCallback = scan_cb
         self.scanTimer = QTimer(self)
-        self.scanTimer.timeout.connect(self.scanCallback)
+        self.scanTimer.timeout.connect(self._manager.scan)
         self.scanTimer.start(10000)
-        self.deviceDataCallback = device_data_cb
+        self.deviceDataCallback = self._manager.get_device_data
         self.openDeviceId = 0
 
         self.device_ids = []
+        self.mg_ids = []
 
     def initUi(self):
         self.setWindowTitle('LANKeeper')
@@ -160,10 +155,10 @@ class MainWindow (QMainWindow):
         self.mgEditBtn.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         #       </mgTitleFrame>
         #       <mgTable>
-        self.mgTable = Table(1, 2, no_header=True)  # monitor group table
+        self.mgTable = Table(1, 1, no_header=True)  # monitor group table
         self.monitoringPanel.mainFrame.layout().addWidget(self.mgTable)
-        self.mgTable.setItem(0, 0, QTableWidgetItem('Default Group'))
-        self.mgTable.setItem(0, 1, QTableWidgetItem('20 devices'))
+        # self.mgTable.setItem(0, 0, QTableWidgetItem('Default Group'))
+        # self.mgTable.setItem(0, 1, QTableWidgetItem('20 devices'))
         self.mgTable.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         #       </mgTable>
         #     </monitoringPanel>
@@ -189,9 +184,8 @@ class MainWindow (QMainWindow):
         # Initialize other windows
         self.deviceWindow = DeviceWindow()  # Device window
         self.deviceWindow.initUi()
-        self.mgmanageWindow = MGManageWindow()  # Monitor groups management window
+        self.mgmanageWindow = MGManageWindow(self._manager)  # Monitor groups management window
         self.mgmanageWindow.initUi()
-        # self.mgmanageWindow.monitorGroups = [MonitorGroup('Default group')]
 
     def renderDashboard(self):
         self.dashboardPanel.mainFrame.setLayout(QVBoxLayout())
@@ -242,13 +236,24 @@ class MainWindow (QMainWindow):
                 else:
                     self.devicesTable.setItem(row, col, QTableWidgetItem(str(item)))
 
-    def updateMGtable(self, mgs):
-        # self.mg_ids = list(zip(*mgs))[0]
-        pass
+    def updateMGtable(self, data):
+        """
+        Update the monitor group table at the main window
+        and updates the monitor group window
+        mgs (list): [(id: int, mg: MonitorGroup), ...]
+        """
+        self.mg_ids, mgs = list(zip(*data))
+        self.mgTable.setRowCount(0)
+        for row, mg in enumerate(mgs):
+            self.mgTable.insertRow(row)
+            self.mgTable.setItem(row, 0, QTableWidgetItem(mg.name))
+            self.mgTable.setItem(row, 1, QTableWidgetItem(str(len(mg.ips))))
+        # Update the monitor group window
+        self.mgmanageWindow.updateMonitorGroups(mgs, self.mg_ids)
 
     def _deviceSelected(self, item):
         self.openDeviceId = self.device_ids[item.row()]
-        self.deviceWindow.device = self.deviceDataCallback(self.openDeviceId)
+        self.deviceWindow.device = self._manager.get_device_data(self.openDeviceId)
         self.deviceWindow.show()
 
     def _mgEditBtnClicked(self):
@@ -432,62 +437,6 @@ class DeviceWindow(SmallWindow):
             self.firstJoinedBlock.time = self._first_joined
 
 
-class MGManageWindow(SmallWindow):
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._monitor_groups = []
-
-    def initUi(self):
-        self.setMinimumWidth(500)
-        self.mainPanel.panelTitle = 'Monitoring groups'
-        self.mainPanel.mainFrame.setLayout(QVBoxLayout())
-        self.mgTable = Table(1, 4, multi_select=True)
-        self.mainPanel.mainFrame.layout().addWidget(self.mgTable)
-        self.mgTable.setHorizontalHeaderLabels(['Name', 'Devices', 'Detectors', ''])
-        self.mgTable.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.mgTable.horizontalHeader().setSectionResizeMode(3, QHeaderView.Fixed)
-        self.mgTable.horizontalHeader().setStretchLastSection(True)
-        self.monitorGroups = [
-            MonitorGroup('Default', ['10.100.102.1', '10.100.102.12'], [0, 1, 2, 5, 8, 10, 11]),
-            MonitorGroup('IDK', ['10.100.102.21', '10.100.102.18'], [8, 19, 11])
-        ]
-
-    @property
-    def monitorGroups(self) -> list:
-        return self._monitor_groups
-
-    @monitorGroups.setter
-    def monitorGroups(self, value: list):
-        self._monitor_groups = value
-        print('\n'.join(map(str, value)))
-        self.mgTable.setRowCount(len(self._monitor_groups))
-        for row, mg in enumerate(self._monitor_groups):
-            self.mgTable.setItem(row, 0, QTableWidgetItem(mg.name))
-            devicesItem = QTableWidgetItem(f'{len(mg.ips)} devices')
-            devicesItem.setTextAlignment(Qt.AlignCenter)
-            self.mgTable.setItem(row, 1, devicesItem)
-            detectorsItem = QTableWidgetItem(f'{len(mg.detectors)} detectors')
-            detectorsItem.setTextAlignment(Qt.AlignCenter)
-            self.mgTable.setItem(row, 2, detectorsItem)
-            # cbWidget = QWidget()
-            # cbWidget.setLayout(QHBoxLayout())
-            # cbWidget.layout().setAlignment(Qt.AlignCenter)
-            # cbWidget.layout().setContentsMargins(0, 0, 0, 0)
-            # cb = QCheckBox()
-            # cbWidget.layout().addWidget(cb)
-            # cbWidget.setStyleSheet('background-color:rgba(0,0,0,0);')
-            # self.mgTable.setCellWidget(row, 0, cbWidget)
-            editWidget = QWidget()
-            editWidget.setLayout(QHBoxLayout())
-            editWidget.layout().setAlignment(Qt.AlignCenter)
-            editWidget.layout().setContentsMargins(0, 0, 0, 0)
-            edit = QLabel('<a href="#">Edit</a>')
-            editWidget.layout().addWidget(edit)
-            editWidget.setStyleSheet('background-color:rgba(0,0,0,0);')
-            self.mgTable.setCellWidget(row, 3, editWidget)
-
-
 class DeviceTimeBlock (QFrame):
     """This time block appears in the device window, titled 'FIRST JOINED' and 'LAST SEEN'"""
 
@@ -523,6 +472,113 @@ class DeviceTimeBlock (QFrame):
         self.timeLabel.setText(self._time.strftime(DATETIME_FORMAT))
 
 
+class MGManageWindow(SmallWindow):
+
+    def __init__(self, manager, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._manager = manager
+        self._monitor_groups_ids = []
+        self._monitor_groups = []
+
+    def initUi(self):
+        self.setMinimumWidth(540)
+        self.mainPanel.panelTitle = 'Monitoring groups'
+        self.mainPanel.mainFrame.setLayout(QVBoxLayout())
+        self.mgTable = Table(1, 5, multi_select=True)
+        self.mainPanel.mainFrame.layout().addWidget(self.mgTable)
+        self.mgTable.setHorizontalHeaderLabels(['', 'Name', 'Devices', 'Detectors', ''])
+        self.mgTable.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.mgTable.horizontalHeader().setSectionResizeMode(0, QHeaderView.Fixed)
+        self.mgTable.horizontalHeader().setSectionResizeMode(4, QHeaderView.Fixed)
+        self.mgTable.horizontalHeader().setStretchLastSection(True)
+        self.mgTable.selectionModel().selectionChanged.connect(self._mgTableSelected)
+        self.controlsFrame = QFrame()
+        self.mainPanel.mainFrame.layout().addWidget(self.controlsFrame)
+        self.controlsFrame.setLayout(QHBoxLayout())
+        self.controlsFrame.layout().setContentsMargins(0, 0, 0, 0)
+        self.controlsFrame.layout().setSpacing(8)
+        # self.controlsFrame.setStyleSheet('QPushButton {background-color: red}')
+        self.selectAllBtn = QPushButton('Select all')
+        self.controlsFrame.layout().addWidget(self.selectAllBtn)
+        self.selectAllBtn.clicked.connect(self._selectAllBtnClicked)
+        self.deselectAllBtn = QPushButton('Deselect all')
+        self.controlsFrame.layout().addWidget(self.deselectAllBtn)
+        self.deselectAllBtn.clicked.connect(self._deselectAllBtnClicked)
+        self.deselectAllBtn.setEnabled(False)
+        self.deleteBtn = QPushButton('Delete groups')
+        self.controlsFrame.layout().addWidget(self.deleteBtn)
+        self.deleteBtn.clicked.connect(self._deleteBtnClicked)
+        self.deleteBtn.setEnabled(False)
+        self.newBtn = QPushButton('New...')
+        self.controlsFrame.layout().addWidget(self.newBtn)
+        self.newBtn.clicked.connect(self._newBtnClicked)
+        self.controlsFrame.layout().addStretch()
+        self.okBtn = QPushButton('OK')
+        self.controlsFrame.layout().addWidget(self.okBtn)
+        self.okBtn.clicked.connect(self._okBtnClicked)
+        self.okBtn.setDefault(True)
+
+    def updateMonitorGroups(self, mgs, ids):
+        self._monitor_groups = mgs
+        self._monitor_groups_ids = ids
+        print('\n'.join(map(str, mgs)))
+        self.mgTable.setRowCount(len(self._monitor_groups))
+        for row, mg in enumerate(self._monitor_groups):
+            nameItem = QTableWidgetItem(mg.name)
+            devicesItem = QTableWidgetItem(f'{len(mg.ips)} devices')
+            devicesItem.setTextAlignment(Qt.AlignCenter)
+            detectorsItem = QTableWidgetItem(f'{len(mg.detectors)} detectors')
+            detectorsItem.setTextAlignment(Qt.AlignCenter)
+            editWidget = QWidget()
+            editWidget.setLayout(QHBoxLayout())
+            editWidget.layout().setAlignment(Qt.AlignCenter)
+            editWidget.layout().setContentsMargins(0, 0, 0, 0)
+            edit = QLabel('<a href="#">Edit</a>')
+            editWidget.layout().addWidget(edit)
+            editWidget.setStyleSheet('background-color:rgba(0,0,0,0);')
+            self.mgTable.setItem(row, 1, nameItem)
+            self.mgTable.setItem(row, 2, devicesItem)
+            self.mgTable.setItem(row, 3, detectorsItem)
+            self.mgTable.setCellWidget(row, 4, editWidget)
+
+    def _mgTableSelected(self, selection):
+        indexes = self.mgTable.selectedIndexes()
+        default_selected = False
+        # if 1 in [self._monitor_groups_ids[x.row()] for x in indexes]:
+        #     default_selected = True
+        for index in indexes:
+            if self._monitor_groups_ids[index.row()] == 1:
+                self.mgTable.selectionModel().select(index, QItemSelectionModel.Deselect)
+                return
+        count = len([x for x in indexes if x.column() == 1])
+        self.deselectAllBtn.setEnabled(count)
+        self.selectAllBtn.setEnabled(count != self.mgTable.rowCount())
+        if count > 1:
+            deltxt = f'Delete {count} groups'
+        elif count:
+            deltxt = 'Delete 1 group'
+        else:
+            deltxt = 'Delete groups'
+        self.deleteBtn.setText(deltxt)
+        self.deleteBtn.setEnabled(count and not default_selected)
+
+    def _selectAllBtnClicked(self, e):
+        self.mgTable.selectAll()
+
+    def _deselectAllBtnClicked(self, e):
+        self.mgTable.clearSelection()
+
+    def _deleteBtnClicked(self, e):
+        self._manager.delete_mgs([self._monitor_groups_ids[x.row()]
+                                  for x in self.mgTable.selectionModel().selectedRows()])
+
+    def _newBtnClicked(self, e):
+        pass
+
+    def _okBtnClicked(self, e):
+        self.close()
+
+
 class Panel (QFrame):
 
     def __init__(self, *args, **kwargs):
@@ -531,7 +587,7 @@ class Panel (QFrame):
 
         self.setLayout(QVBoxLayout())
         self.layout().setContentsMargins(15, 0, 15, 20)
-        self .setStyleSheet('background-color: white; border-radius: 2px;')
+        self.setStyleSheet('QFrame {background-color: white; border-radius: 2px;}')
         shadow = QGraphicsDropShadowEffect(blurRadius=6, xOffset=2, yOffset=3, color=QColor(0, 0, 0, int(0.05*255)))
         self.setGraphicsEffect(shadow)
         # <titleFrame>
@@ -541,7 +597,7 @@ class Panel (QFrame):
         self.titleFrame.layout().setContentsMargins(0, 0, 0, 0)
         self.titleFrame.setMinimumHeight(50)
         self.titleFrame.setMaximumHeight(50)
-        self.titleFrame.setStyleSheet('border-bottom: 1px solid %s; border-radius: revert;' % COL_PRIMARY_GRAY)
+        self.titleFrame.setStyleSheet('QFrame {border-bottom: 1px solid %s; border-radius: revert;}' % COL_PRIMARY_GRAY)
         #   <titleLabel>
         self.titleLabel = QLabel()
         self.titleFrame.layout().addWidget(self.titleLabel)
@@ -586,8 +642,10 @@ class Table (QTableWidget):
             self.setSelectionMode(QAbstractItemView.SingleSelection)
         self.setPalette(self.style().standardPalette())
         self.setStyleSheet('''QTableWidget::item:selected {{
-                background-color: rgba(140, 175, 217, 50);
+                background-color: {1};
                 color: black;
+            }} QHeaderView::section {{
+                color: {2};
             }} QScrollBar:vertical {{
                 border: none;
                 width:8px;
@@ -617,9 +675,9 @@ class Table (QTableWidget):
                 subcontrol-origin: margin;
             }} QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
                 background: none;
-            }}'''.format(COL_SCROLLBAR))
+            }}'''.format(COL_SCROLLBAR, COL_SELECTED_BG, COL_PRIMARY_TEXT))
         self.setFocusPolicy(Qt.NoFocus)
-        # self.itemSelectionChanged.connect(self._itemSelectionChanged)
+        self.horizontalHeader().setHighlightSections(False)
 
         if no_header:
             self.horizontalHeader().setVisible(False)
