@@ -1,10 +1,11 @@
 # LANKeeper (https://github.com/danielperr/LANKeeper)
-# TCP SYN flood detector
-from detectors.basedetector import BaseDetector
+# This detector is used for forbidden websites and will not be included in the configuration lists
+
+from base_detector import BaseDetector
 from scapy.all import *
 
 
-class DomainDetector (BaseDetector):
+class DNSResolutionDetector (BaseDetector):
 
     name = 'Domain'
     detect_rate = 10  # pkts/sec

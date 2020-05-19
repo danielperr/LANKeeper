@@ -9,9 +9,11 @@ class ScanResult (object):
 
     def __init__(self,
                  hosts: list,
-                 time: datetime.datetime):
+                 time: datetime.datetime,
+                 detailed: bool = False):
         self.hosts = hosts
         self.time = time
+        self.detailed = detailed
 
     def __str__(self):
         return '%s scan result: (%s hosts up)\n:%s' % (self.time.strftime(r'%m/%d/%Y@%H:%M:%S'),

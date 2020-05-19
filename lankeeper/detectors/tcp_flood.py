@@ -1,6 +1,6 @@
 # LANKeeper (https://github.com/danielperr/LANKeeper)
 # TCP SYN flood detector
-from detectors.basedetector import BaseDetector
+from detectors.base_detector import BaseDetector
 from scapy.all import *
 import datetime
 import time
@@ -36,7 +36,7 @@ class Host (object):
         # print('%s at %s pkts/sec' % (self.ip, self.rate))
 
 
-class TcpSynFloodDetector (BaseDetector):
+class TcpFloodDetector (BaseDetector):
 
     name = 'TCP flood attack'
     detect_rate = 10  # pkts/sec

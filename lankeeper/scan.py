@@ -15,6 +15,7 @@ import requests
 NAME = 0b1
 VENDOR = 0b10
 PORTS = 0b100
+OS = 0b1000
 
 DEFAULT_ARP_TIMEOUT = 2  # sec
 DEFAULT_PROG_INTERVAL = 10  # sec
@@ -25,7 +26,8 @@ class Scanner (object):
     options_flags = {
         NAME: 'name',
         VENDOR: 'vendor',
-        PORTS: 'ports'
+        PORTS: 'ports',
+        OS: 'os'
     }
 
     def __init__(self, manager_conn, **kwargs):
@@ -103,7 +105,7 @@ class Scanner (object):
         # print('\n'.join(map(str, hosts)))
         # print('%s hosts up.' % len(hosts))
         print('sending scan results')
-        scan_result = ScanResult(hosts, datetime.now())
+        scan_result = ScanResult(hosts, datetime.now(), bool(options == PORTS + OS))
         self._manager_conn.send(scan_result)
         return hosts
 
@@ -199,6 +201,9 @@ class Scanner (object):
         host.ports = list(set(ports))
 
         print('open ports:', host.ports)
+
+    def _getos(self, host):
+        host.os = 'Windows'
 
 
 class ScanError (Exception):

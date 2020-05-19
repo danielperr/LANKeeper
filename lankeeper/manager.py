@@ -55,7 +55,10 @@ class Manager:
                 self._update_devices()
                 self.main_window.dbNewDevices = self._dbagent.get_new_device_count()
                 if self.main_window.deviceWindow.isVisible():
-                    self.main_window.deviceWindow.device = self._dbagent.get_device_info(self.main_window.openDeviceId)
+                    device = self._dbagent.get_device_info(self.main_window.openDeviceId)
+                    if data.detailed:
+                        self.main_window.deviceWindow.scanDone()
+                    self.main_window.deviceWindow.device = device
         if not self.scanner_queue.empty():
             self.scanner_conn.send(self.scanner_queue.get())
 
@@ -63,13 +66,27 @@ class Manager:
         if self.scanner_queue.empty():
             self.command_scanner(('scan', ('10.100.102.0/24', s.NAME + s.VENDOR)))
 
+    def scan_ports_os(self, ip):
+        self.command_scanner(('scan', (ip, s.PORTS + s.OS)))
+
     def get_device_data(self, device_id):
         result = self._dbagent.get_device_info(device_id)
         return result
 
+    def update_device_mg(self, device_id, mg_id):
+        self._dbagent.update_device_mg(device_id, mg_id)
+
+    def add_mg(self, mg):
+        self._dbagent.add_mg(mg)
+        self._update_mgs()
+
     def delete_mgs(self, mg_ids):
         for mgid in mg_ids:
             self._dbagent.remove_mg(mgid)
+        self._update_mgs()
+
+    def update_mg(self, mgid, mg):
+        self._dbagent.update_mg(mgid, mg)
         self._update_mgs()
 
     # Private methods
@@ -83,10 +100,10 @@ class Manager:
         mgs = self._dbagent.get_mgs()
         self.main_window.updateMGtable(mgs)
 
-    def _device_scan_clicked(self, ip, mac):
-        self.main_window.deviceWindow.deviceLabel.linkActivated.disconnect()
-        self._update_device_window(self._dbagent.get_device_info(self.open_device_id), True)
-        self.command_scanner(('scan_ports', (ip, mac)))
+    # def _device_scan_clicked(self, ip, mac):
+    #     self.main_window.deviceWindow.deviceLabel.linkActivated.disconnect()
+    #     self._update_device_window(self._dbagent.get_device_info(self.open_device_id), True)
+    #     self.command_scanner(('scan_ports', (ip, mac)))
 
     def _device_selected(self, item):
         self.open_device_id = self.main_window.device_ids[item.row()]
