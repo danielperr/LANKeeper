@@ -10,17 +10,16 @@ class MonitorEvent:
     DRIVE = 2
 
     def __init__(self,
-                 id_: int,
                  ip: str,
                  time: datetime,
                  type: int,
-                 ignore: bool,
+                 ignore: bool = False,
                  *_,
                  action: str = '',
                  process: str = '',
                  drive: str = ''):
-        self.id = id_
         self.ip = ip
+        self.time = time
         self.type = type
         self.ignore = ignore
         self.action = action

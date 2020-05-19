@@ -8,7 +8,7 @@ class ARPSpoofDetector (BaseDetector):
 
     name = 'ARP spoofing'
 
-    def __init__(self, forbidden_domains: [str]):
+    def __init__(self):
         pass
 
     def handle_packet(self, p):

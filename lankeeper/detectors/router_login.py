@@ -8,7 +8,7 @@ class RouterLoginDetector (BaseDetector):
 
     name = 'Router login attempt'
 
-    def __init__(self, forbidden_domains: [str]):
+    def __init__(self):
         pass
 
     def handle_packet(self, p):

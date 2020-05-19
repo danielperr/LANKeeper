@@ -210,10 +210,16 @@ class DBAgent:
             conn.execute('''UPDATE hosts
                             SET mg_id = ?
                             WHERE id = ?''', (mg_id, device_id))
+
+    def ignore_new_devices(self):
+        with self._connect() as conn:
+            conn.execute('''UPDATE hosts
+                            SET new_device = 0
+                            WHERE new_device = 1''')
     # </hosts>
 
     # <monitor groups>
-    def add_mg(self, mg: MonitorGroup):  # TODO: try-catch this if name already exists
+    def add_mg(self, mg: MonitorGroup):  # TODO: raise exception if name already exists
         with self._connect() as conn:
             cur = conn.cursor()
             cur.execute('INSERT INTO monitorgroups(name, ips, detectors, websites) VALUES(?,?,?,?)',
@@ -261,9 +267,25 @@ class DBAgent:
     # </monitor groups>
 
     # <monitor reports>
-    def add_monitor_report(self, need_to_work_this_out):
+    def add_monitor_report(self, me: MonitorEvent):
         """Add activity report from monitor"""
-        pass
+        print('----------------- dbagent ok')
+        with self._connect() as conn:
+            cur = conn.cursor()
+            cur.execute('''INSERT INTO log(ip,
+                                           time,
+                                           type,
+                                           ignore,
+                                           action,
+                                           process,
+                                           drive)
+                           VALUES(?,?,?,?,?,?,?)''', (me.ip,
+                                                      self._create_datetime(me.time),
+                                                      me.type,
+                                                      int(me.ignore),
+                                                      me.action,
+                                                      me.process,
+                                                      me.drive))
 
     def get_monitor_reports(self, ip) -> list:
         """:returns list of the latest MonitorEvent from each type (if exists)"""
@@ -285,8 +307,7 @@ class DBAgent:
             for r in results:
                 if not types[r[1]]:
                     types[r[1]] = True
-                    events.append(MonitorEvent(id_=r[0],
-                                               ip=ip,
+                    events.append(MonitorEvent(ip=ip,
                                                time=self._extract_datetime(r[2]),
                                                type=r[1],
                                                ignore=bool(r[3]),
@@ -296,6 +317,24 @@ class DBAgent:
             conn.commit()
             return events
 
+    def ignore_process(self, ip, process):
+        with self._connect() as conn:
+            cur = conn.cursor()
+            cur.execute('''UPDATE log
+                           SET ignore = ?
+                           WHERE ip = ?
+                           AND process = ?''', (1, ip, process))
+            conn.commit()
+
+    def ignore_drive(self, ip, drive):
+        with self._connect() as conn:
+            print('ignoring drive!')
+            cur = conn.cursor()
+            cur.execute('''UPDATE log
+                           SET ignore = ?
+                           WHERE ip = ?
+                           AND drive = ?''', (1, ip, drive))
+            conn.commit()
     # </monitor reports>
 
     def _extract_list(self, input):
@@ -304,8 +343,11 @@ class DBAgent:
         result = input.split('\n')
         return result if result[0] else []
 
-    def _extract_datetime(self, input):
+    def _extract_datetime(self, input: str) -> datetime:
         return datetime.strptime(input, DATETIME_FORMAT)
+
+    def _create_datetime(self, input: datetime) -> str:
+        return input.strftime(DATETIME_FORMAT)
 
     def pretty_date(self, time=False):
         """

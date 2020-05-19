@@ -32,11 +32,13 @@ class Device (Host):
         self.last_seen = last_seen
         self.mg_id = mg_id
         self.new_device = new_device
+        self.monitor_events = []
 
     def __str__(self):
-        return '%s\nFirst joined: %s\nLast seen: %s\nBelongs to monitor group ID %s' % (
+        return '%s\nFirst joined: %s\nLast seen: %s\nBelongs to monitor group ID %s\nMonitor events: %s' % (
             super().__str__(),
             self.first_joined.strftime(self.DATETIME_FORMAT),
             self.last_seen.strftime(self.DATETIME_FORMAT),
-            self.mg_id
+            self.mg_id,
+            len(self.monitor_events)
         )

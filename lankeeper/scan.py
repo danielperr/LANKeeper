@@ -184,6 +184,8 @@ class Scanner (object):
 
         def handle_response(p):
             ports.append(p.sport)
+            host.ttl = p[IP].ttl
+            print('found ttl:', host.ttl)
 
         def ports_threaded_sniff():
             sniff(filter='tcp',
@@ -203,7 +205,18 @@ class Scanner (object):
         print('open ports:', host.ports)
 
     def _getos(self, host):
-        host.os = 'Windows'
+        if not host.ttl:
+            results = sniff(filter='icmp', lfilter=lambda p: p[IP].src == host.ip, count=1, timeout=2)
+            send(IP(dst=host.ip)/ICMP())
+            if results:
+                host.ttl = results[0][IP].ttl
+        if host.ttl:
+            if host.ttl == 128:
+                host.os = 'Windows'
+            else:
+                host.os = 'Linux'
+        else:
+            host.os = 'Unknown'
 
 
 class ScanError (Exception):

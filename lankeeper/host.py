@@ -17,6 +17,8 @@ class Host (object):
         self.vendor = vendor
         self.ports = ports
         self.os = os
+        # other attributes
+        self.ttl = 0  # 0=unknown
 
     def __str__(self):
         return '%s%s - %s%s%s%s' % (

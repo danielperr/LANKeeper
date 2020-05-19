@@ -11,6 +11,7 @@ from datetime import datetime
 
 from device import Device
 from monitorgroup import MonitorGroup
+from monitorevent import MonitorEvent
 from detectors.detectors import detectors_sorted, detectors
 import utils
 
@@ -32,6 +33,7 @@ SRC_BANNER_WHITE = os.getcwd() + r'\lankeeper\resources\images\white-banner.png'
 SRC_LOADING_GIF = os.getcwd() + r'\lankeeper\resources\images\loading.gif'
 SRC_INFO = os.getcwd() + r'\lankeeper\resources\images\info.png'
 SRC_CHECKMARK = os.getcwd() + r'\lankeeper\resources\images\checkmark.png'
+SRC_CRITICAL = os.getcwd() + r'\lankeeper\resources\images\critical.png'
 
 DATETIME_FORMAT = r'%m/%d/%Y at %H:%M:%S'
 LABEL_STYLESHEET = f'font: 13px "Segoe UI"; color: {COL_PRIMARY_TEXT}'
@@ -47,6 +49,13 @@ LIST_STYLESHEET = '''QListWidget {{
 
 
 class MainWindow (QMainWindow):
+
+    T_DB_TRAFFIC = '1 malicious traffic case'
+    T_DB_TRAFFICS = '{0} malicious traffic cases'
+    T_DB_PROCESS = '1 suspicious process activity'
+    T_DB_PROCESSES = '{0} suspicious process activities'
+    T_DB_DRIVE = '1 unidentified removable drive'
+    T_DB_DRIVES = '{0} unidentified removable drives'
 
     def __init__(self, manager, *args, **kwargs):
         """App main window"""
@@ -205,28 +214,47 @@ class MainWindow (QMainWindow):
 
     def renderDashboard(self):
         self.dashboardPanel.mainFrame.setLayout(QVBoxLayout())
-        self.dbNewDevicesFrame = QFrame()
-        self.dashboardPanel.mainFrame.layout().addWidget(self.dbNewDevicesFrame)
-        self.dbNewDevicesFrame.setLayout(QHBoxLayout())
-        self.dbNewDevicesFrame.layout().setAlignment(Qt.AlignLeft)
-        self.dbNewDevicesIcon = QLabel()
-        self.dbNewDevicesFrame.layout().addWidget(self.dbNewDevicesIcon)
-        pixmap = QPixmap(SRC_INFO if self._dbNewDevices else SRC_CHECKMARK)
-        pixmap = pixmap.scaled(24, 24, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        self.dbNewDevicesIcon.setPixmap(pixmap)
-        self.dbNewDevicesIcon.setAlignment(Qt.AlignLeft)
-        self.dbNewDevicesLabel = QLabel()
-        self.dbNewDevicesFrame.layout().addWidget(self.dbNewDevicesLabel)
         text = 'No new devices detected.'
         if self._dbNewDevices == 1:
             text = '1 new device detected.'
         elif self._dbNewDevices > 1:
             text = '%s new devices detected.' % self._dbNewDevices
-        self.dbNewDevicesLabel.setText(text)
-        self.dbNewDevicesLabel.setAlignment(Qt.AlignLeft)
-        font = QFont('Segoe UI', 12)
-        font.setStyleStrategy(QFont.PreferAntialias)
-        self.dbNewDevicesLabel.setFont(font)
+        self.dbNewDevicesLabel = IconLabel(text, IconLabel.INFO)
+        self.dbNewDevicesLabel.label.linkActivated.connect(self._ignoreNewDevices)
+        self.dashboardPanel.mainFrame.layout().addWidget(self.dbNewDevicesLabel)
+        self.dbTrafficLabel = IconLabel(self.T_DB_TRAFFIC, IconLabel.CRITICAL)
+        self.dashboardPanel.mainFrame.layout().addWidget(self.dbTrafficLabel)
+        self.dbTrafficLabel.setVisible(False)
+        self.dbProcessLabel = IconLabel(self.T_DB_PROCESS, IconLabel.CRITICAL)
+        self.dashboardPanel.mainFrame.layout().addWidget(self.dbProcessLabel)
+        self.dbProcessLabel.setVisible(False)
+        self.dbDriveLabel = IconLabel(self.T_DB_DRIVE, IconLabel.CRITICAL)
+        self.dashboardPanel.mainFrame.layout().addWidget(self.dbDriveLabel)
+        self.dbDriveLabel.setVisible(False)
+        self.dashboardPanel.mainFrame.layout().addStretch()
+
+    def updateDashboard(self, devices):
+        cases = [0, 0, 0]  # traffic, process, drive
+        for device in devices:
+            for event in device.monitor_events:
+                if event.ignore:
+                    continue
+                cases[event.type] += 1
+        if cases[0]:
+            self.dbTrafficLabel.setVisible(True)
+            self.dbTrafficLabel.setText(self.T_DB_TRAFFIC)
+        if cases[0] > 1:
+            self.dbTrafficLabel.setText(self.T_DB_TRAFFICS.format(cases[0]))
+        if cases[1]:
+            self.dbProcessLabel.setVisible(True)
+            self.dbProcessLabel.setText(self.T_DB_PROCESS)
+        if cases[1] > 1:
+            self.dbProcessLabel.setText(self.T_DB_PROCESSES.format(cases[1]))
+        if cases[2]:
+            self.dbDriveLabel.setVisible(True)
+            self.dbDriveLabel.setText(self.T_DB_DRIVE)
+        if cases[2] > 1:
+            self.dbDriveLabel.setText(self.T_DB_DRIVES.format(cases[2]))
 
     def updateDevicesTable(self, devices, loading=False):
         self.device_ids = [d.id for d in devices]
@@ -237,12 +265,14 @@ class MainWindow (QMainWindow):
             self.devicesTable.setItem(row, 2, QTableWidgetItem(device.vendor if device.vendor else device.mac))
             last_seen_txt = 'Scanning...' if loading else utils.time_ago(device.last_seen)
             self.devicesTable.setItem(row, 3, QTableWidgetItem(last_seen_txt))
-            if device.new_device:
+            if device.new_device or device.monitor_events:
                 iconWidget = QWidget()
                 iconWidget.setLayout(QHBoxLayout())
                 iconWidget.layout().setAlignment(Qt.AlignCenter)
                 iconWidget.layout().setContentsMargins(0, 0, 0, 0)
                 pixmap = QPixmap(SRC_INFO)
+                if device.monitor_events:
+                    pixmap = QPixmap(SRC_CRITICAL)
                 pixmap = pixmap.scaled(16, 16, Qt.KeepAspectRatio, Qt.SmoothTransformation)
                 label = QLabel()
                 label.setPixmap(pixmap)
@@ -264,6 +294,9 @@ class MainWindow (QMainWindow):
             self.mgTable.setItem(row, 1, QTableWidgetItem(str(len(mg.ips))))
         # Update the monitor group window
         self.mgmanageWindow.updateMonitorGroups(self.monitor_groups, self.mg_ids)
+
+    def _ignoreNewDevices(self, e):
+        self._manager.ignore_new_devices()
 
     def _deviceSelected(self, item):
         self.openDeviceId = self.device_ids[item.row()]
@@ -291,14 +324,13 @@ class MainWindow (QMainWindow):
     def dbNewDevices(self, value):
         self._dbNewDevices = value
         # self.renderDashboard()
-        pixmap = QPixmap(SRC_INFO if self._dbNewDevices else SRC_CHECKMARK)
-        pixmap = pixmap.scaled(24, 24, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        self.dbNewDevicesIcon.setPixmap(pixmap)
+        iconType = IconLabel.INFO if self._dbNewDevices else IconLabel.CHECKMARK
+        self.dbNewDevicesLabel.setIconType(iconType)
         text = 'No new devices detected.'
         if self._dbNewDevices == 1:
-            text = '1 new device detected.'
+            text = '1 new device detected. <a href="#">OK</a>'
         elif self._dbNewDevices > 1:
-            text = '%s new devices detected.' % self._dbNewDevices
+            text = '%s new devices detected. <a href="#">OK</a>' % self._dbNewDevices
         self.dbNewDevicesLabel.setText(text)
 
 
@@ -354,6 +386,9 @@ class DeviceWindow(SmallWindow):
     T_MONITORING = 'Monitoring'
     T_MON_NOTIF = 'Monitoring (1 new notification)'
     T_MON_NOTIFS = 'Monitoring (%s new notifications)'
+    T_MON_TRAFFIC = 'This device is sending potentially malicious traffic ({0}) and has been blocked. <a href="#">Unblock<a/>'
+    T_MON_PROCESS = 'This device is running a process ({0}) that it has never run before. <a href="#">Whitelist {0}</a>'
+    T_MON_DRIVE = 'An unrecognized drive ({0}) was inserted to this device. <a href="#">Whitelist {0}</a>'
     # Style
 
     def __init__(self, manager, *args, **kwargs):
@@ -371,6 +406,9 @@ class DeviceWindow(SmallWindow):
         self._deep_scanned = False
         self._mgs = []
         self._mid_scan = False  # is it mid port scan
+        self._event_traffic = ''
+        self._event_process = ''
+        self._event_drive = ''
 
     def initUi(self):
         # <mainPanel>
@@ -433,12 +471,17 @@ class DeviceWindow(SmallWindow):
         self.monReportsFrame.setLayout(QVBoxLayout())
         self.monReportsFrame.layout().setContentsMargins(0, 0, 0, 0)
         self.monReportsFrame.layout().setSpacing(8)
-        self.monTrafficLabel = IconLabel('This device is sending potentially malicious traffic (TCP port scan) and has been blocked. <a href="#">Unblock<a/>', IconLabel.INFO)
+        self.monTrafficLabel = IconLabel(self.T_MON_TRAFFIC.format(''), IconLabel.CRITICAL)
         self.monReportsFrame.layout().addWidget(self.monTrafficLabel)
-        self.monProcessLabel = IconLabel('This device is running a process (cmd.exe) that it has never run before. <a href="#">Whitelist cmd.exe</a>', IconLabel.INFO)
+        self.monTrafficLabel.setVisible(False)
+        self.monProcessLabel = IconLabel(self.T_MON_PROCESS.format(''), IconLabel.CRITICAL)
         self.monReportsFrame.layout().addWidget(self.monProcessLabel)
-        self.monDriveLabel = IconLabel('An unrecognized drive (SanDisk Cruzer) was inserted to this device. <a href="#">Whitelist Sandisk Cruzer</a>', IconLabel.INFO)
+        self.monProcessLabel.setVisible(False)
+        self.monProcessLabel.label.linkActivated.connect(self._monProcessIgnoreClicked)
+        self.monDriveLabel = IconLabel(self.T_MON_DRIVE.format(''), IconLabel.CRITICAL)
         self.monReportsFrame.layout().addWidget(self.monDriveLabel)
+        self.monDriveLabel.setVisible(False)
+        self.monDriveLabel.label.linkActivated.connect(self._monDriveIgnoreClicked)
         #   </monReportsFrame>
         #   <monGroupsFrame>
         self.monGroupsFrame = QFrame()
@@ -510,6 +553,24 @@ class DeviceWindow(SmallWindow):
             self.scanBtn.linkActivated.connect(self._scanBtnClicked)
         # update monitoring panel
         self._updateMGTable()
+        self.monTrafficLabel.setVisible(False)
+        self.monProcessLabel.setVisible(False)
+        self.monDriveLabel.setVisible(False)
+        for event in d.monitor_events:
+            if event.ignore:
+                continue
+            if event.type == MonitorEvent.TRAFFIC:
+                self.monTrafficLabel.setVisible(True)
+                self.monTrafficLabel.setText(self.T_MON_TRAFFIC.format(event.action))
+                self._event_traffic = event.action
+            elif event.type == MonitorEvent.PROCESS:
+                self.monProcessLabel.setVisible(True)
+                self.monProcessLabel.setText(self.T_MON_PROCESS.format(event.process))
+                self._event_process = event.process
+            elif event.type == MonitorEvent.DRIVE:
+                self.monDriveLabel.setVisible(True)
+                self.monDriveLabel.setText(self.T_MON_DRIVE.format(event.drive))
+                self._event_drive = event.drive
 
     @property
     def mgs(self) -> list:
@@ -542,6 +603,14 @@ class DeviceWindow(SmallWindow):
     def _monGroupSelected(self, row):
         print(self._mgs[row])
         self._manager.update_device_mg(self._device.id, row + 1)
+
+    def _monProcessIgnoreClicked(self, e):
+        self._manager.ignore_process(self._device.ip, self._event_process)
+        self.monProcessLabel.setVisible(False)
+
+    def _monDriveIgnoreClicked(self, e):
+        self._manager.ignore_drive(self._device.ip, self._event_drive)
+        self.monDriveLabel.setVisible(False)
 
 
 class DeviceTimeBlock (QFrame):
@@ -1154,7 +1223,7 @@ class IconLabel (QFrame):
         SRC_CHECKMARK,
         SRC_INFO,
         r'',
-        r''
+        SRC_CRITICAL
     ]
 
     def __init__(self, text, iconType, *args, **kwargs):
