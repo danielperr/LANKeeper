@@ -57,6 +57,7 @@ class DBAgent:
                           name TEXT UNIQUE NOT NULL,
                           ips TEXT,
                           detectors TEXT,
+                          wmi INTEGER,
                           websites TEXT)''')
             cur.execute('''CREATE TABLE IF NOT EXISTS log(
                           id INTEGER PRIMARY KEY NOT NULL,
@@ -66,7 +67,8 @@ class DBAgent:
                           ignore INTEGER NOT NULL,
                           action TEXT,
                           process TEXT,
-                          drive TEXT)''')
+                          drive TEXT,
+                          website TEXT)''')
             conn.commit()
 
     def _drop(self):
@@ -114,6 +116,7 @@ class DBAgent:
                                  strtime,
                                  1,
                                  1))
+                    # TODO: assign device to default monitor group
                 else:
                     cur.execute('''SELECT id,
                                           mac,
@@ -205,11 +208,29 @@ class DBAgent:
             result = conn.execute('''SELECT new_device FROM hosts''')
             return len(list(filter(bool, [x[0] for x in result])))
 
-    def update_device_mg(self, device_id, mg_id):
+    def update_device_mg(self, device_ip, mg_id):
+        """Update the monitor group for a device"""
         with self._connect() as conn:
-            conn.execute('''UPDATE hosts
+            cur = conn.cursor()
+            # Update in the hosts table
+            cur.execute('''UPDATE hosts
                             SET mg_id = ?
-                            WHERE id = ?''', (mg_id, device_id))
+                            WHERE ip = ?''', (mg_id, device_ip))
+            # Update devices for all monitorgroups
+            cur.execute('''SELECT ip, mg_id
+                           FROM hosts''')
+            ip_mgid = {r[0]: r[1] for r in cur.fetchall()}  # {ip: mg_id}
+            mgid_ips = {}  # {mg_id: [ip, ...]}
+            for ip, mgid in ip_mgid.items():
+                mgid_ips.setdefault(mgid, [])
+                mgid_ips[mgid].append(ip)
+            cur.execute('''UPDATE monitorgroups
+                           SET ips = '' ''')
+            for mgid, ips in mgid_ips.items():
+                cur.execute('''UPDATE monitorgroups
+                               SET ips = ?
+                               WHERE id = ?''', ('\n'.join(ips), mgid))
+            conn.commit()
 
     def ignore_new_devices(self):
         with self._connect() as conn:
@@ -222,10 +243,11 @@ class DBAgent:
     def add_mg(self, mg: MonitorGroup):  # TODO: raise exception if name already exists
         with self._connect() as conn:
             cur = conn.cursor()
-            cur.execute('INSERT INTO monitorgroups(name, ips, detectors, websites) VALUES(?,?,?,?)',
+            cur.execute('INSERT INTO monitorgroups(name, ips, detectors, wmi, websites) VALUES(?,?,?,?,?)',
                         (mg.name,
                          '\n'.join(sorted(mg.ips)),
                          '\n'.join(sorted(map(str, mg.detectors))),
+                         mg.wmi,
                          '\n'.join(mg.websites)))
             conn.commit()
 
@@ -235,41 +257,68 @@ class DBAgent:
             cur.execute('''UPDATE monitorgroups SET name = ?,
                                                     ips = ?,
                                                     detectors = ?,
+                                                    wmi = ?,
                                                     websites = ?
                            WHERE id = ?''', (mg.name,
                                              '\n'.join(sorted(mg.ips)),
                                              '\n'.join(sorted(map(str, mg.detectors))),
+                                             mg.wmi,
                                              '\n'.join(mg.websites),
                                              mgid))
 
     def remove_mg(self, mgid: int):
         with self._connect() as conn:
             cur = conn.cursor()
-            cur.execute('DELETE FROM monitorgroups WHERE id = ?', (mgid, ))
+            cur.execute('''DELETE
+                           FROM monitorgroups
+                           WHERE id = ?''', (mgid, ))
+            conn.commit()
+
+    def reindex_mgs(self):
+        with self._connect() as conn:
+            cur = conn.cursor()
+            cur.execute('''SELECT id
+                           FROM monitorgroups
+                           ORDER BY id''')
+            results = cur.fetchall()
+            for i, row in enumerate(results):
+                cur.execute('''UPDATE monitorgroups
+                               SET id = ?
+                               WHERE id = ?''', (i + 1, row[0]))
             conn.commit()
 
     def get_mgs(self) -> list:
         with self._connect() as conn:
-            result = conn.execute('SELECT id, name, ips, detectors, websites FROM monitorgroups')
+            result = conn.execute('''SELECT id, name, ips, detectors, wmi, websites
+                                     FROM monitorgroups
+                                     ORDER BY id ASC''')
             return [(x[0], MonitorGroup(name=x[1],
                                         ips=self._extract_list(x[2]),
                                         detectors=list(map(int, self._extract_list(x[3]))),
-                                        websites=self._extract_list(x[4])))
+                                        wmi=x[4],
+                                        websites=self._extract_list(x[5])))
                     for x in result]
 
-    def get_mg(self, name: str) -> MonitorGroup:
+    def get_mg(self, name='', mgid=0) -> MonitorGroup:
         with self._connect() as conn:
             cur = conn.cursor()
-            cur.execute('SELECT ips, detectors FROM monitorgroups WHERE name = ?', (name, ))
+            if mgid:
+                cur.execute('SELECT ips, detectors, wmi, websites FROM monitorgroups WHERE id = ?', (mgid, ))
+            else:
+                cur.execute('SELECT ips, detectors, wmi, websites FROM monitorgroups WHERE name = ?', (name, ))
             result = cur.fetchone()
             conn.commit()
-            return MonitorGroup(name, ips=set(result[0].split(',')), detectors=set(result[1].split(',')))
+            return MonitorGroup(name,
+                                ips=set(self._extract_list(result[0])),
+                                detectors=set(self._extract_list(result[1])),
+                                wmi=result[2],
+                                websites=self._extract_list(result[3]))
     # </monitor groups>
 
     # <monitor reports>
     def add_monitor_report(self, me: MonitorEvent):
         """Add activity report from monitor"""
-        print('----------------- dbagent ok')
+        # print('----------------- dbagent ok')
         with self._connect() as conn:
             cur = conn.cursor()
             cur.execute('''INSERT INTO log(ip,
@@ -278,14 +327,16 @@ class DBAgent:
                                            ignore,
                                            action,
                                            process,
-                                           drive)
-                           VALUES(?,?,?,?,?,?,?)''', (me.ip,
-                                                      self._create_datetime(me.time),
-                                                      me.type,
-                                                      int(me.ignore),
-                                                      me.action,
-                                                      me.process,
-                                                      me.drive))
+                                           drive,
+                                           website)
+                           VALUES(?,?,?,?,?,?,?,?)''', (me.ip,
+                                                        self._create_datetime(me.time),
+                                                        me.type,
+                                                        int(me.ignore),
+                                                        me.action,
+                                                        me.process,
+                                                        me.drive,
+                                                        me.website))
 
     def get_monitor_reports(self, ip) -> list:
         """:returns list of the latest MonitorEvent from each type (if exists)"""
@@ -297,25 +348,37 @@ class DBAgent:
                                   ignore,
                                   action,
                                   process,
-                                  drive
+                                  drive,
+                                  website
                            FROM log
                            WHERE ip = ?
                            ORDER BY id DESC''', (ip, ))
             results = cur.fetchall()
-            types = [False] * 3
+            types = [False] * 4
             events = []
             for r in results:
                 if not types[r[1]]:
                     types[r[1]] = True
+                    print(f'found {r[1]=}')
                     events.append(MonitorEvent(ip=ip,
                                                time=self._extract_datetime(r[2]),
                                                type=r[1],
                                                ignore=bool(r[3]),
                                                action=str(r[4]),
                                                process=str(r[5]),
-                                               drive=str(r[6])))
+                                               drive=str(r[6]),
+                                               website=str(r[7])))
             conn.commit()
             return events
+
+    def ignore_action(self, ip, action):
+        with self._connect() as conn:
+            cur = conn.cursor()
+            cur.execute('''UPDATE log
+                           SET ignore = ?
+                           WHERE ip = ?
+                           AND action = ?''', (1, ip, action))
+            conn.commit()
 
     def ignore_process(self, ip, process):
         with self._connect() as conn:
@@ -328,12 +391,22 @@ class DBAgent:
 
     def ignore_drive(self, ip, drive):
         with self._connect() as conn:
-            print('ignoring drive!')
+            # print('ignoring drive!')
             cur = conn.cursor()
             cur.execute('''UPDATE log
                            SET ignore = ?
                            WHERE ip = ?
                            AND drive = ?''', (1, ip, drive))
+            conn.commit()
+
+    def ignore_website(self, ip, website):
+        with self._connect() as conn:
+            # print('ignoring drive!')
+            cur = conn.cursor()
+            cur.execute('''UPDATE log
+                           SET ignore = ?
+                           WHERE ip = ?
+                           AND website = ?''', (1, ip, website))
             conn.commit()
     # </monitor reports>
 

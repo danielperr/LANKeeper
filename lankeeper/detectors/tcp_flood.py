@@ -41,7 +41,8 @@ class TcpFloodDetector (BaseDetector):
     name = 'TCP flood attack'
     detect_rate = 10  # pkts/sec
 
-    def __init__(self):
+    def __init__(self, report):
+        self.report = report
         self.hosts = list()
 
     def handle_packet(self, p):

@@ -8,14 +8,17 @@ import json
 import os
 import threading as t
 from datetime import datetime
+from scapy.all import *
 
 from detectors.detectors import detectors
+from detectors.website_detector import WebsiteDetector
 from monitorevent import MonitorEvent
+from fw import Firewall
 
 
 DEFAULT_PATH = os.path.expandvars('%APPDATA%\\LANKeeper\\monitoring.json')
 SUSPECT_THRESHOLD = 0.7  # percentage to suspect
-ALERT_THRESHOLD = 5  # consecutive times to alert
+ALERT_THRESHOLD = 2  # consecutive times to alert
 PROCESS_BLACKLIST = ['WmiApSrv.exe', 'taskeng.exe', 'SearchFilterHost.exe', 'SearchProtocolHost.exe', 'SystemSettings.exe']
 TRAINING_PERIOD = 10
 
@@ -28,22 +31,39 @@ class Monitor:
 
     def __init__(self, manager_conn, **kwargs):
         self._manager_conn = manager_conn
-        self.path = DEFAULT_PATH
-        self.wmi_supported = self._get_wmi_supported()
-        self.detectors = [d() for d in detectors]
-        print(self.wmi_supported)
-        self.connections = {ip: wmi.WMI(ip, user=WMI_USER, password=WMI_PASS) for ip in self.wmi_supported}
-        # if True:
-        # training_count = 0
+        self.path = DEFAULT_PATH  # TODO: rename?
+        self._fw = Firewall()
+        self._mgs = []
+        # Init detectors and assign callback method
+        self.detectors = [d(lambda ip, name=d.name: self._report_traffic(ip, name)) for d in detectors]
+        self.website_detectors = []
+        self.ignore_detectors = {}  # {ip: [detector names]}
+        self.websites_visited = {}  # {ip: [websites]} - for making sure a website doesn't get reported multiple times
+        # Set up threads
         listen_thread_obj = t.Thread(target=self.listen_thread, args=(self._manager_conn,))
         listen_thread_obj.start()
+        traffic_thread_obj = t.Thread(target=self.traffic_thread, args=())
+        traffic_thread_obj.start()
+        # Set up WMI connections
+        # TODO: auto WMI supported scan
+        self.wmi_supported = self._get_wmi_supported()
+        self.connections = dict()
+        for ip in self.wmi_supported:
+            try:
+                conn = wmi.WMI(ip, user=WMI_USER, password=WMI_PASS)
+            except wmi.x_wmi:
+                pass
+            else:
+                self.connections[ip] = conn
+        # Start WMI routine on main thread
         self.wmi_routine()
 
     def listen_thread(self, _manager_conn):
+        """Thread that listens for commands from manager"""
         while True:
-            print('bruh')
+            # print('bruh')
             command = _manager_conn.recv()
-            print('received')
+            # print('received')
             if command:
                 self._run_command(command)
 
@@ -56,28 +76,79 @@ class Monitor:
 
     # <detectors>
     def traffic_thread(self):
+        """Thread for sniffing packets"""
         sniff(filter='ip', prn=self._feed_detectors)
 
-    def traffic_check(self):
-        events = []
-        for detector in self.detectors:
-            ips = detector.detect()
-            events += [MonitorEvent(ip=ip,
-                                    time=datetime.now(),
-                                    type=MonitorEvent.TRAFFIC,
-                                    action=detector.name) for ip in ips]
-        for event in events:
-            self._manager_conn.send(event)
-
     def _feed_detectors(self, p):
-        for detector in self.detectors:
-            detector.handle_packet(p)
+        """Handle packet and feed to detectors
+        Checks if ip is included in any of the
+        monitor groups and feeds to relevant detectors"""
+        if not p.haslayer(IP):
+            return
+        if not self._mgs:
+            return
+        psrc, pdst = p[IP].src, p[IP].dst
+        # find the monitor group for the ip address
+        detector_ids = self._mgs[0].detectors  # default
+        website_detector = self.website_detectors[0]
+        for i, mg in enumerate(self._mgs):
+            if psrc in mg.ips or pdst in mg.ips:
+                detector_ids = mg.detectors
+                website_detector = self.website_detectors[i]
+                break
+        website_detector.handle_packet(p)
+        for detector_id in detector_ids:
+            self.detectors[detector_id].handle_packet(p)
+
+    def _report_traffic(self, ip, name):
+        """A function that is called from a detector when it identifies suspicious behavior
+        ip (str): Suspicious IPv4 address
+        name (str): Detector name"""
+        if ip in self.ignore_detectors.keys() and name in self.ignore_detectors[ip]:
+            return
+        event = MonitorEvent(ip=ip,
+                             time=datetime.now(),
+                             type=MonitorEvent.TRAFFIC,
+                             action=name)
+        print('BLOCKING IP %s FOR %s' % (ip, name))
+        self._fw.block_ip(ip)
+        self._manager_conn.send(event)
+
+    def _report_website(self, ip, website):
+        """A function that is called from a website detector when it fires up
+        ip (str): The IP address that accessed the website
+        website (str): The website (domain or IPv4 address) that has been accessed"""
+        self.websites_visited.setdefault(ip, [])
+        if website not in self.websites_visited[ip]: self.websites_visited[ip].append(website)
+        else: return
+        event = MonitorEvent(ip=ip,
+                             time=datetime.now(),
+                             type=MonitorEvent.WEBSITE,
+                             website=website)
+        print('IP %s HAS ACCESSED %s' % (ip, website))
+        self._manager_conn.send(event)
+
+    def unblock_action(self, ip, action):
+        # if ip not in self.ignore_detectors.keys():
+        #     self.ignore_detectors[ip] = []
+        # self.ignore_detectors[ip].append(action)
+        # print(self.ignore_detectors)
+        self._fw.unblock_ip(ip)
+
+    def update_mgs(self, mgs):
+        self._mgs = [mg[1] for mg in mgs]
+        self._default_mg = self._mgs[0]
+        # print('MONITOR MGS\n' + '\n'.join(map(str, self._mgs)))
+        self.website_detectors = [WebsiteDetector(mg.websites, self._report_website) for mg in self._mgs]
     # </detectors>
 
     # <wmi>
     def wmi_routine(self):
+        """WMI routine. Must run on main thread"""
         while True:
             for ip in self.wmi_supported:
+                if ip not in self.connections.keys():
+                    continue
                 info = self.get_info_from_ip(ip)
                 processes = info[0]
                 processes = [p for p in processes if p not in PROCESS_BLACKLIST]
@@ -89,10 +160,10 @@ class Monitor:
                 #   if not, alert!
                 self._db_add_record(ip, processes, True)
                 suspiciousness = self.check_suspiciousness(ip)
-                print(suspiciousness)
+                # print(suspiciousness)
                 if suspiciousness[1] > SUSPECT_THRESHOLD:
                     if self._db_check_stash_total(ip) > ALERT_THRESHOLD:
-                        print('[!!!] Suspicious traffic for ip %s' % ip)
+                        print('[!!!] Suspicious process for ip %s' % ip)
                         self._manager_conn.send(MonitorEvent(ip=ip,
                                                              time=datetime.now(),
                                                              type=MonitorEvent.PROCESS,
@@ -111,7 +182,8 @@ class Monitor:
                                                          drive=new_drive))
 
     def get_info_from_ip(self, ip):
-        """returns (processes, drives)"""
+        """Resolves WMI info from the IP address
+        :returns: (processes, drives)"""
         print(f'trying to connect WMI to ip {ip}')
         conn = self.connections[ip]
         return ([p.caption for p in conn.Win32_Process()],
@@ -149,7 +221,7 @@ class Monitor:
         new_drive = ''
         for drive in drives:
             if drive not in known:
-                print(f'{drive=} {known=}')
+                # print(f'{drive=} {known=}')
                 new_drive = drive
         with open(self.path, 'w') as f:
             json.dump(data, f)
@@ -169,6 +241,11 @@ class Monitor:
         data[ip]['processes'][process] = data[ip]['total'].copy()
         with open(self.path, 'w') as f:
             json.dump(data, f)
+
+    def ack_website(self, ip, website):
+        self.websites_visited.setdefault(ip, [])
+        if website in self.websites_visited[ip]:
+            self.websites_visited[ip].remove(website)
 
     def _db_check_stash_total(self, ip):
         with open(self.path) as f:

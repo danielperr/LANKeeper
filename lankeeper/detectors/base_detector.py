@@ -10,14 +10,13 @@ class BaseDetector (ABC):
         """Name of the detector to appear on lists and menus"""
         raise NotImplementedError
 
+    def report(self):
+        """Callback function to report.
+        Accepts IP address (str)"""
+        raise NotImplementedError
+
     @classmethod
     @abstractmethod
     def handle_packet(cls, packet: scapypacket):
         """Recieve a packet from sniff"""
-        pass
-
-    @classmethod
-    @abstractmethod
-    def detect(cls) -> list:
-        """:returns str list of dangerous ips"""
         pass

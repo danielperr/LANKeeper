@@ -3,6 +3,7 @@
 
 import os
 import sys
+import pathlib
 
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
@@ -29,11 +30,12 @@ COL_SCROLLBAR = '#BBBBBB'
 COL_SELECTED_BG = '#F0F7FF'
 COL_GRAY_BORDER = '#B0B0B0'
 
-SRC_BANNER_WHITE = os.getcwd() + r'\lankeeper\resources\images\white-banner.png'
-SRC_LOADING_GIF = os.getcwd() + r'\lankeeper\resources\images\loading.gif'
-SRC_INFO = os.getcwd() + r'\lankeeper\resources\images\info.png'
-SRC_CHECKMARK = os.getcwd() + r'\lankeeper\resources\images\checkmark.png'
-SRC_CRITICAL = os.getcwd() + r'\lankeeper\resources\images\critical.png'
+path = str(pathlib.Path(__file__).absolute().parent)
+SRC_BANNER_WHITE = path + r'\resources\images\white-banner.png'
+SRC_LOADING_GIF = path + r'\resources\images\loading.gif'
+SRC_INFO = path + r'\resources\images\info.png'
+SRC_CHECKMARK = path + r'\resources\images\checkmark.png'
+SRC_CRITICAL = path + r'\resources\images\critical.png'
 
 DATETIME_FORMAT = r'%m/%d/%Y at %H:%M:%S'
 LABEL_STYLESHEET = f'font: 13px "Segoe UI"; color: {COL_PRIMARY_TEXT}'
@@ -56,6 +58,8 @@ class MainWindow (QMainWindow):
     T_DB_PROCESSES = '{0} suspicious process activities'
     T_DB_DRIVE = '1 unidentified removable drive'
     T_DB_DRIVES = '{0} unidentified removable drives'
+    T_DB_WEBSITE = '1 forbidden website access'
+    T_DB_WEBSITES = '{0} forbidden website accesses'
 
     def __init__(self, manager, *args, **kwargs):
         """App main window"""
@@ -231,15 +235,23 @@ class MainWindow (QMainWindow):
         self.dbDriveLabel = IconLabel(self.T_DB_DRIVE, IconLabel.CRITICAL)
         self.dashboardPanel.mainFrame.layout().addWidget(self.dbDriveLabel)
         self.dbDriveLabel.setVisible(False)
+        self.dbWebsiteLabel = IconLabel(self.T_DB_WEBSITE, IconLabel.CRITICAL)
+        self.dashboardPanel.mainFrame.layout().addWidget(self.dbWebsiteLabel)
+        self.dbWebsiteLabel.setVisible(False)
         self.dashboardPanel.mainFrame.layout().addStretch()
 
     def updateDashboard(self, devices):
-        cases = [0, 0, 0]  # traffic, process, drive
+        cases = [0, 0, 0, 0]  # traffic, process, drive, website
+        print(f'{cases=}')
         for device in devices:
             for event in device.monitor_events:
                 if event.ignore:
                     continue
                 cases[event.type] += 1
+        self.dbTrafficLabel.setVisible(False)
+        self.dbProcessLabel.setVisible(False)
+        self.dbDriveLabel.setVisible(False)
+        self.dbWebsiteLabel.setVisible(False)
         if cases[0]:
             self.dbTrafficLabel.setVisible(True)
             self.dbTrafficLabel.setText(self.T_DB_TRAFFIC)
@@ -255,6 +267,11 @@ class MainWindow (QMainWindow):
             self.dbDriveLabel.setText(self.T_DB_DRIVE)
         if cases[2] > 1:
             self.dbDriveLabel.setText(self.T_DB_DRIVES.format(cases[2]))
+        if cases[3]:
+            self.dbWebsiteLabel.setVisible(True)
+            self.dbWebsiteLabel.setText(self.T_DB_WEBSITE)
+        if cases[3] > 1:
+            self.dbWebsiteLabel.setText(self.T_DB_WEBSITE.format(cases[3]))
 
     def updateDevicesTable(self, devices, loading=False):
         self.device_ids = [d.id for d in devices]
@@ -265,14 +282,20 @@ class MainWindow (QMainWindow):
             self.devicesTable.setItem(row, 2, QTableWidgetItem(device.vendor if device.vendor else device.mac))
             last_seen_txt = 'Scanning...' if loading else utils.time_ago(device.last_seen)
             self.devicesTable.setItem(row, 3, QTableWidgetItem(last_seen_txt))
-            if device.new_device or device.monitor_events:
+            iconSrc = False
+            if device.monitor_events:
+                for event in device.monitor_events:
+                    if not event.ignore:
+                        iconSrc = SRC_CRITICAL
+                        break
+            if device.new_device:
+                iconSrc = SRC_INFO
+            if iconSrc:
                 iconWidget = QWidget()
                 iconWidget.setLayout(QHBoxLayout())
                 iconWidget.layout().setAlignment(Qt.AlignCenter)
                 iconWidget.layout().setContentsMargins(0, 0, 0, 0)
-                pixmap = QPixmap(SRC_INFO)
-                if device.monitor_events:
-                    pixmap = QPixmap(SRC_CRITICAL)
+                pixmap = QPixmap(iconSrc)
                 pixmap = pixmap.scaled(16, 16, Qt.KeepAspectRatio, Qt.SmoothTransformation)
                 label = QLabel()
                 label.setPixmap(pixmap)
@@ -389,6 +412,7 @@ class DeviceWindow(SmallWindow):
     T_MON_TRAFFIC = 'This device is sending potentially malicious traffic ({0}) and has been blocked. <a href="#">Unblock<a/>'
     T_MON_PROCESS = 'This device is running a process ({0}) that it has never run before. <a href="#">Whitelist {0}</a>'
     T_MON_DRIVE = 'An unrecognized drive ({0}) was inserted to this device. <a href="#">Whitelist {0}</a>'
+    T_MON_WEBSITE = 'This device has accessed a blacklisted website ({0}). <a href="#">OK</a>'
     # Style
 
     def __init__(self, manager, *args, **kwargs):
@@ -409,6 +433,7 @@ class DeviceWindow(SmallWindow):
         self._event_traffic = ''
         self._event_process = ''
         self._event_drive = ''
+        self._event_website = ''
 
     def initUi(self):
         # <mainPanel>
@@ -474,6 +499,7 @@ class DeviceWindow(SmallWindow):
         self.monTrafficLabel = IconLabel(self.T_MON_TRAFFIC.format(''), IconLabel.CRITICAL)
         self.monReportsFrame.layout().addWidget(self.monTrafficLabel)
         self.monTrafficLabel.setVisible(False)
+        self.monTrafficLabel.label.linkActivated.connect(self._monTrafficIgnoreClicked)
         self.monProcessLabel = IconLabel(self.T_MON_PROCESS.format(''), IconLabel.CRITICAL)
         self.monReportsFrame.layout().addWidget(self.monProcessLabel)
         self.monProcessLabel.setVisible(False)
@@ -482,6 +508,10 @@ class DeviceWindow(SmallWindow):
         self.monReportsFrame.layout().addWidget(self.monDriveLabel)
         self.monDriveLabel.setVisible(False)
         self.monDriveLabel.label.linkActivated.connect(self._monDriveIgnoreClicked)
+        self.monWebsiteLabel = IconLabel(self.T_MON_WEBSITE.format(''), IconLabel.CRITICAL)
+        self.monReportsFrame.layout().addWidget(self.monWebsiteLabel)
+        self.monWebsiteLabel.setVisible(False)
+        self.monWebsiteLabel.label.linkActivated.connect(self._monWebsiteIgnoreClicked)
         #   </monReportsFrame>
         #   <monGroupsFrame>
         self.monGroupsFrame = QFrame()
@@ -522,13 +552,16 @@ class DeviceWindow(SmallWindow):
     def device(self, d: Device):
         self._device = d
         self._ip = d.ip
-        print('SETTING DEVICE')
-        print(d)
+        # print('SETTING DEVICE')
+        # print(d)
         self.mainPanel.panelTitle = f'{self.TITLE} ({self._ip if not d.name else d.name})'
         self.ipLabel.setText(self.composeText(self.T_IP, self._ip))
         if d.mac and self._mac != d.mac:
             self._mac = d.mac
             self.macLabel.setText(self.composeText(self.T_MAC, self._mac))
+        if not d.name:
+            self._name = 'Unknown'
+            self.nameLabel.setText(self.composeText(self.T_NAME, 'Unknown'))
         if d.name and self._name != d.name:
             self._name = d.name
             self.mainPanel.panelTitle = f'{self.TITLE} ({self._name})'
@@ -536,9 +569,15 @@ class DeviceWindow(SmallWindow):
         if d.vendor and self._vendor != d.vendor:
             self._vendor = d.vendor
             self.vendorLabel.setText(self.composeText(self.T_VENDOR, self._vendor))
+        if not d.os:
+            self._os = ''
+            self.osLabel.setText(self.composeText(self.T_OS, 'Unknown'))
         if d.os and self._os != d.os:
             self._os = d.os
             self.osLabel.setText(self.composeText(self.T_OS, self._os))
+        if not d.ports:
+            self._ports = []
+            self.portsLabel.setText(self.composeText(self.T_PORTS, 'Unknown'))
         if d.ports and self._ports != d.ports:
             self._ports = d.ports
             self.portsLabel.setText(self.composeText(self.T_PORTS, ', '.join(map(str, self._ports))))
@@ -556,6 +595,7 @@ class DeviceWindow(SmallWindow):
         self.monTrafficLabel.setVisible(False)
         self.monProcessLabel.setVisible(False)
         self.monDriveLabel.setVisible(False)
+        self.monWebsiteLabel.setVisible(False)
         for event in d.monitor_events:
             if event.ignore:
                 continue
@@ -571,6 +611,10 @@ class DeviceWindow(SmallWindow):
                 self.monDriveLabel.setVisible(True)
                 self.monDriveLabel.setText(self.T_MON_DRIVE.format(event.drive))
                 self._event_drive = event.drive
+            elif event.type == MonitorEvent.WEBSITE:
+                self.monWebsiteLabel.setVisible(True)
+                self.monWebsiteLabel.setText(self.T_MON_WEBSITE.format(event.website))
+                self._event_website = event.website
 
     @property
     def mgs(self) -> list:
@@ -601,8 +645,12 @@ class DeviceWindow(SmallWindow):
             item.setFlags(Qt.ItemIsEnabled)
 
     def _monGroupSelected(self, row):
-        print(self._mgs[row])
-        self._manager.update_device_mg(self._device.id, row + 1)
+        # print(self._mgs[row])
+        self._manager.update_device_mg(self._device.ip, row + 1)
+
+    def _monTrafficIgnoreClicked(self, e):
+        self._manager.ignore_traffic(self._device.ip, self._event_traffic)
+        self.monTrafficLabel.setVisible(False)
 
     def _monProcessIgnoreClicked(self, e):
         self._manager.ignore_process(self._device.ip, self._event_process)
@@ -611,6 +659,10 @@ class DeviceWindow(SmallWindow):
     def _monDriveIgnoreClicked(self, e):
         self._manager.ignore_drive(self._device.ip, self._event_drive)
         self.monDriveLabel.setVisible(False)
+
+    def _monWebsiteIgnoreClicked(self, e):
+        self._manager.ignore_website(self._device.ip, self._event_website)
+        self.monWebsiteLabel.setVisible(False)
 
 
 class DeviceTimeBlock (QFrame):
@@ -642,8 +694,8 @@ class DeviceTimeBlock (QFrame):
     @time.setter
     def time(self, value):
         self._time = value
-        print(f'{self._time=}')
-        print(f'{utils.time_ago(self._time)=}')
+        # print(f'{self._time=}')
+        # print(f'{utils.time_ago(self._time)=}')
         self.agoLabel.setText(utils.time_ago(self._time))
         self.timeLabel.setText(self._time.strftime(DATETIME_FORMAT))
 
@@ -849,6 +901,56 @@ class MGEditWindow(SmallWindow):
         self.detectorsControlsFrame.layout().addStretch()
         #   </detectorsControlsFrame>
         # </detectorsFrame>
+        # <wmiPanel>
+        self.wmiPanel = Panel(untitled=True)
+        self.mainFrame.layout().addWidget(self.wmiPanel)
+        self.wmiPanel.mainFrame.setLayout(QVBoxLayout())
+        self.wmiLabel = QLabel('Turn on or off WMI based monitoring')
+        self.wmiPanel.mainFrame.layout().addWidget(self.wmiLabel)
+        self.wmiLabel.setStyleSheet(LABEL_STYLESHEET)
+        self.wmiPanel.layout().setContentsMargins(15, 0, 15, 10)
+        #   <wmiControlsFrame>
+        self.wmiControlsFrame = QFrame()
+        self.wmiPanel.mainFrame.layout().addWidget(self.wmiControlsFrame)
+        self.wmiControlsFrame.setLayout(QGridLayout())
+        self.wmiControlsFrame.layout().setContentsMargins(0, 8, 0, 0)
+        self.wmiControlsFrame.layout().setColumnStretch(2, 1)
+        self.wmiControlsFrame.layout().setHorizontalSpacing(16)
+        self.wmiControlsFrame.setStyleSheet('background-color:white;')
+        self.wmiProcessLabel = QLabel('Process monitoring:')
+        self.wmiControlsFrame.layout().addWidget(self.wmiProcessLabel, 0, 0)
+        self.wmiProcessLabel.setStyleSheet(LABEL_STYLESHEET)
+        #     <wmiProcessRadioFrame>
+        self.wmiProcessRadioFrame = QFrame()
+        self.wmiControlsFrame.layout().addWidget(self.wmiProcessRadioFrame, 0, 1)
+        self.wmiProcessRadioFrame.setLayout(QHBoxLayout())
+        self.wmiProcessRadioFrame.layout().setContentsMargins(0, 0, 0, 0)
+        self.wmiProcessRadioFrame.layout().setSpacing(8)
+        self.wmiProcessOn = QRadioButton('On')
+        self.wmiProcessRadioFrame.layout().addWidget(self.wmiProcessOn)
+        self.wmiProcessOn.clicked.connect(self._wmiProcessOnClicked)
+        self.wmiProcessOff = QRadioButton('Off')
+        self.wmiProcessRadioFrame.layout().addWidget(self.wmiProcessOff)
+        self.wmiProcessOff.clicked.connect(self._wmiProcessOffClicked)
+        #     </wmiProcessRadioFrame>
+        self.wmiDriveLabel = QLabel('Portable drive monitoring:')
+        self.wmiControlsFrame.layout().addWidget(self.wmiDriveLabel, 1, 0)
+        self.wmiDriveLabel.setStyleSheet(LABEL_STYLESHEET)
+        #     <wmiDriveRadioFrame>
+        self.wmiDriveRadioFrame = QFrame()
+        self.wmiControlsFrame.layout().addWidget(self.wmiDriveRadioFrame, 1, 1)
+        self.wmiDriveRadioFrame.setLayout(QHBoxLayout())
+        self.wmiDriveRadioFrame.layout().setContentsMargins(0, 0, 0, 0)
+        self.wmiDriveRadioFrame.layout().setSpacing(8)
+        self.wmiDriveOn = QRadioButton('On')
+        self.wmiDriveRadioFrame.layout().addWidget(self.wmiDriveOn)
+        self.wmiDriveOn.clicked.connect(self._wmiDriveOnClicked)
+        self.wmiDriveOff = QRadioButton('Off')
+        self.wmiDriveRadioFrame.layout().addWidget(self.wmiDriveOff)
+        self.wmiDriveOff.clicked.connect(self._wmiDriveOffClicked)
+        #     </wmiDriveRadioFrame>
+        #   </wmiControlsFrame>
+        # </wmiPanel>
         # <webPanel>
         self.webPanel = Panel(untitled=True)
         self.mainFrame.layout().addWidget(self.webPanel)
@@ -910,6 +1012,17 @@ class MGEditWindow(SmallWindow):
             state = Qt.Checked if i in self._mg.detectors else Qt.Unchecked
             self.detectorsList.item(i).setCheckState(state)
         self._mid_check = False
+        # update wmi rules
+        state = self._mg.wmi
+        if state % 2:  # process monitoring is activated
+            self.wmiProcessOn.setChecked(True)
+        else:
+            self.wmiProcessOff.setChecked(True)
+        if state > 1:  # drive monitoring is activated
+            self.wmiDriveOn.setChecked(True)
+        else:
+            self.wmiDriveOff.setChecked(True)
+        self.wmiProcessOn
         # update website rules
         self.webTable.setRowCount(len(self._mg.websites))
         for row, addr in enumerate(self._mg.websites):
@@ -976,6 +1089,20 @@ class MGEditWindow(SmallWindow):
         self._mid_check = False
         self._detectorsListItemChanged(None)
 
+    def _wmiProcessOnClicked(self, e):
+        self._mg.wmi |= 1  # set process bit to 1
+
+    def _wmiProcessOffClicked(self, e):
+        self._mg.wmi |= 1
+        self._mg.wmi ^= 1  # set process bit to 0
+
+    def _wmiDriveOnClicked(self, e):
+        self._mg.wmi |= 2  # set drive bit to 1
+
+    def _wmiDriveOffClicked(self, e):
+        self._mg.wmi |= 2
+        self._mg.wmi ^= 2  # set drive bit to 0
+
     def _webEditClicked(self, row):
         self._web_row_editing = row
         self.websiteRuleEditWindow.address = self._mg.websites[row]
@@ -993,7 +1120,7 @@ class MGEditWindow(SmallWindow):
     def _webItemSelectionChanged(self, selection):
         indexes = self.webTable.selectedIndexes()
         count = len([x for x in indexes if x.column() == 1])
-        print(f'{count}')
+        # print(f'{count}')
         self.webDeselectBtn.setEnabled(count)
         self.webSelectAllBtn.setEnabled(count != self.webTable.rowCount())
         if count > 1:

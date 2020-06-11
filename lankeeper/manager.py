@@ -75,8 +75,9 @@ class Manager:
                     device.monitor_events = self._dbagent.get_monitor_reports(device.ip)
                     self.main_window.deviceWindow.device = device
             elif isinstance(data, MonitorEvent):
-                print('--------------------- manager ok')
+                # print('--------------------- manager ok')
                 self._dbagent.add_monitor_report(data)
+                self._update_devices()
         if not self.scanner_queue.empty():
             self.scanner_conn.send(self.scanner_queue.get())
         if not self.monitor_queue.empty():
@@ -100,8 +101,9 @@ class Manager:
         self._update_devices()
         self.main_window.dbNewDevices = 0
 
-    def update_device_mg(self, device_id, mg_id):
-        self._dbagent.update_device_mg(device_id, mg_id)
+    def update_device_mg(self, device_ip, mg_id):
+        self._dbagent.update_device_mg(device_ip, mg_id)
+        self._update_mgs()
 
     def add_mg(self, mg):
         self._dbagent.add_mg(mg)
@@ -109,7 +111,12 @@ class Manager:
 
     def delete_mgs(self, mg_ids):
         for mgid in mg_ids:
+            # Check if the mg has ip addresses and move them to default mg
+            ips = self._dbagent.get_mg(mgid=mgid).ips
+            for ip in ips:
+                self._dbagent.update_device_mg(ip, 1)
             self._dbagent.remove_mg(mgid)
+        self._dbagent.reindex_mgs()
         self._update_mgs()
 
     def update_mg(self, mgid, mg):
@@ -130,6 +137,7 @@ class Manager:
     def _update_mgs(self):
         mgs = self._dbagent.get_mgs()
         self.main_window.updateMGtable(mgs)
+        self.command_monitor(('update_mgs', (mgs,)))
 
     def command_monitor(self, cmd):
         self.monitor_queue.put(cmd)
@@ -144,13 +152,25 @@ class Manager:
         self._update_device_window(self._dbagent.get_device_info(self.open_device_id))
         self.main_window.deviceWindow.show()
 
+    def ignore_traffic(self, ip, action):
+        self.command_monitor(('unblock_action', (ip, action)))
+        self._dbagent.ignore_action(ip, action)
+        self._update_devices()
+
     def ignore_process(self, ip, process):
         self.command_monitor(('add_process', (ip, process)))
         self._dbagent.ignore_process(ip, process)
+        self._update_devices()
 
     def ignore_drive(self, ip, drive):
         self.command_monitor(('add_drive', (ip, drive)))
         self._dbagent.ignore_drive(ip, drive)
+        self._update_devices()
+
+    def ignore_website(self, ip, website):
+        self.command_monitor(('ack_website', (ip, website)))
+        self._dbagent.ignore_website(ip, website)
+        self._update_devices()
 
 
 def main():
