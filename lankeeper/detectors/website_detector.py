@@ -2,7 +2,10 @@
 # This detector is used for forbidden websites and will not be included in the configuration lists
 
 from socket import getaddrinfo
-from detectors.base_detector import BaseDetector
+try:
+    from detectors.base_detector import BaseDetector
+except ModuleNotFoundError:
+    from base_detector import BaseDetector
 from scapy.all import *
 
 

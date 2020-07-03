@@ -10,7 +10,8 @@ from detectors.smurf_attack import SmurfAttackDetector
 # NOTE do not change order, only append to the end
 detectors = [
     TcpFloodDetector,  # this one's ID is 0 and so on
-    IPDuplicationDetector
+    IPDuplicationDetector,
+    RouterLoginDetector
 ]
 
 detectors_sorted = sorted(detectors, key=lambda x: x.name)

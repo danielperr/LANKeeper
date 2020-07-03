@@ -8,8 +8,8 @@ class RDPAuthDetector (BaseDetector):
 
     name = 'RDP authentication attempt'
 
-    def __init__(self):
-        pass
+    def __init__(self, report):
+        self.report = report
 
     def handle_packet(self, p):
         pass
