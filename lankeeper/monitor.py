@@ -24,7 +24,7 @@ TRAINING_PERIOD = 10
 
 # wmi creds
 WMI_USER = 'REMOTE'  # these are the same for all wmi supported pcs
-WMI_PASS = 'H4dGfcMB6gDk'
+WMI_PASS = ''
 
 
 class Monitor:
@@ -36,7 +36,7 @@ class Monitor:
         self._mgs = []
         # Init detectors and assign callback method
         self.detectors = [d(lambda ip, name=d.name: self._report_traffic(ip, name)) for d in detectors]
-        self.website_detectors = []
+        self.website_detectors = [WebsiteDetector([], self._report_website)]
         self.ignore_detectors = {}  # {ip: [detector names]}
         self.websites_visited = {}  # {ip: [websites]} - for making sure a website doesn't get reported multiple times
         # Set up threads
@@ -45,16 +45,18 @@ class Monitor:
         traffic_thread_obj = t.Thread(target=self.traffic_thread, args=())
         traffic_thread_obj.start()
         # Set up WMI connections
-        # TODO: auto WMI supported scan
+        self.import_wmi_creds()
         self.wmi_supported = self._get_wmi_supported()
         self.connections = dict()
         for ip in self.wmi_supported:
             try:
+                print('[WMI] Trying to connect to %s' % ip)
                 conn = wmi.WMI(ip, user=WMI_USER, password=WMI_PASS)
             except wmi.x_wmi:
-                pass
+                print('[WMI] Failure (%s)' % ip)
             else:
                 self.connections[ip] = conn
+                print('[WMI] Success (%s)' % ip)
         # Start WMI routine on main thread
         self.wmi_routine()
 
@@ -295,6 +297,11 @@ class Monitor:
             with open(self.path, 'x') as f:
                 json.dump({}, f)
         return open(self.path, 'r+')
+
+    def import_wmi_creds(self):
+        global WMI_PASS
+        with open(os.path.expandvars('%APPDATA%\\LANKeeper\\wmi_cred.txt')) as f:
+            WMI_PASS = f.readline().strip()
 
     def _get_wmi_supported(self):
         with open(os.path.expandvars('%APPDATA%\\LANKeeper\\wmi_supported.txt')) as f:

@@ -37,18 +37,19 @@ class Host (object):
         # print('%s at %s pkts/sec' % (self.ip, self.rate))
 
 
-class TcpFloodDetector (BaseDetector):
+class IcmpFloodDetector (BaseDetector):
 
-    name = 'TCP Denial of Service'
-    detect_rate = 10000  # pkts/sec
+    name = 'ICMP Denial of Service'
+    detect_rate = 1000  # pkts/sec
 
     def __init__(self, report):
         self.report = report
         self.hosts = list()
 
     def handle_packet(self, p):
-        if p.haslayer(TCP) and p[TCP].flags & 0x02:  # SYN
+        if p.haslayer(ICMP) and p[ICMP].code == 0:
             ip = p[IP].src
+            print(p.summary())
             host = self._get_host(ip)
             if not host:
                 host = Host(ip)
@@ -69,9 +70,4 @@ class TcpFloodDetector (BaseDetector):
 
 
 if __name__ == '__main__':
-    print('Starting')
-    detector = TcpSynFloodDetector()
-    sniff(filter='ip', prn=detector.handle_packet, stop_filter=lambda _: bool(detector.detect()))
-    print(detector.detect())
-    # print('\n')
-    print('\n'.join(map(lambda x: '%s = %s pkts/sec' % (x.ip, x.rate), sorted(detector.hosts, key=lambda x: x.rate))))
+    pass

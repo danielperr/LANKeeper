@@ -25,7 +25,7 @@ class WebsiteDetector (BaseDetector):
             domain: list(set([x[4][0] for x in getaddrinfo(domain, 80) + getaddrinfo(domain, 443)]))
             for domain in self.frb_domains
         }
-        print(self.domain_ips)
+        # print(self.domain_ips)
 
     def handle_packet(self, p):
         psrc, pdst = p[IP].src, p[IP].dst

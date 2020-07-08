@@ -71,7 +71,7 @@ class MainWindow (QMainWindow):
         self.loopTimer.start(10)
         self.scanTimer = QTimer(self)
         self.scanTimer.timeout.connect(self._manager.scan)
-        self.scanTimer.start(10000)
+        self.scanTimer.start(20000)
         self.deviceDataCallback = self._manager.get_device_data
         self.openDeviceId = 0
         self.openMGRow = 0
@@ -242,7 +242,7 @@ class MainWindow (QMainWindow):
 
     def updateDashboard(self, devices):
         cases = [0, 0, 0, 0]  # traffic, process, drive, website
-        print(f'{cases=}')
+        # print(f'{cases=}')
         for device in devices:
             for event in device.monitor_events:
                 if event.ignore:

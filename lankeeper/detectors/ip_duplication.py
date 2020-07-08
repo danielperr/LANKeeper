@@ -12,7 +12,6 @@ class IPDuplicationDetector (BaseDetector):
 
     def __init__(self, report):
         self.report = report
-        self.susp = []
         self._ip_mac = {}  # {ip: mac}
 
     def handle_packet(self, p):
@@ -22,12 +21,12 @@ class IPDuplicationDetector (BaseDetector):
             if psrc in self._ip_mac.keys():
                 if hwsrc != self._ip_mac[psrc]:
                     print(f'{psrc} : {hwsrc}')
-                    self.report(psrc)
+                    try:
+                        self.report(list(self._ip_mac.keys())[list(self._ip_mac.values()).index(hwsrc)])
+                    except ValueError:
+                        self.report(psrc)
             else:
                 self._ip_mac[psrc] = hwsrc
-
-    def detect(self):
-        return self.susp
 
 
 if __name__ == '__main__':

@@ -123,7 +123,6 @@ class Manager:
         self._dbagent.update_mg(mgid, mg)
         self._update_mgs()
 
-    # Private methods
     def _update_devices(self, loading=False):
         devices = self._dbagent.get_devices_info()
         if not devices:
@@ -133,6 +132,8 @@ class Manager:
             device.monitor_events = self._dbagent.get_monitor_reports(device.ip)
         self.main_window.updateDevicesTable(devices, loading)
         self.main_window.updateDashboard(devices)
+        if self.main_window.openDeviceId:
+            self.main_window.deviceWindow.device = self.get_device_data(self.main_window.openDeviceId)
 
     def _update_mgs(self):
         mgs = self._dbagent.get_mgs()

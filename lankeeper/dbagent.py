@@ -359,7 +359,7 @@ class DBAgent:
             for r in results:
                 if not types[r[1]]:
                     types[r[1]] = True
-                    print(f'found {r[1]=}')
+                    # print(f'found {r[1]=}')
                     events.append(MonitorEvent(ip=ip,
                                                time=self._extract_datetime(r[2]),
                                                type=r[1],

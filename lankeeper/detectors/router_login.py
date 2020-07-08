@@ -23,6 +23,7 @@ class RouterLoginDetector (BaseDetector):
 
 def report(ip):
     print(f'{ip} has tried to login to the router')
+    exit()
 
 
 if __name__ == '__main__':

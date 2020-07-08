@@ -6,12 +6,14 @@ from detectors.ip_duplication import IPDuplicationDetector
 from detectors.rdp_auth import RDPAuthDetector
 from detectors.router_login import RouterLoginDetector
 from detectors.smurf_attack import SmurfAttackDetector
+from detectors.icmp_flood import IcmpFloodDetector
 
 # NOTE do not change order, only append to the end
 detectors = [
     TcpFloodDetector,  # this one's ID is 0 and so on
     IPDuplicationDetector,
-    RouterLoginDetector
+    RouterLoginDetector,
+    IcmpFloodDetector
 ]
 
 detectors_sorted = sorted(detectors, key=lambda x: x.name)
