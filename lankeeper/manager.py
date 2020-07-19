@@ -65,6 +65,7 @@ class Manager:
         for readable in readables:
             data = readable.recv()
             if isinstance(data, ScanResult):
+                self.main_window.updateOnlineDevices(len(data.hosts))
                 self._dbagent.add_scan_result(data)
                 self._update_devices()
                 self.main_window.dbNewDevices = self._dbagent.get_new_device_count()

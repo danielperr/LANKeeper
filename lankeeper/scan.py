@@ -80,7 +80,6 @@ class Scanner (object):
         sendp([Ether(dst='ff:ff:ff:ff:ff:ff') / ARP(pdst=ip) for ip in ips],
               verbose=0, **self.scapykwargs)
         sniff_thread.join()
-
         hosts = sorted([Host(ip, mac) for ip, mac in ipmac.items()], key=lambda h: IPy.IP(h.ip))
         # print(list(map(str, hosts)))
         # print('%s hosts are up. Running scans...' % len(hosts))
@@ -89,9 +88,11 @@ class Scanner (object):
         # Perform custom / optional scans
         def threaded_scan(h):
             try:
+                # print('scanning', host.ip)
                 self._scan(h, options)
             except ScanError:
                 return
+                # print('failed', host.ip)
 
         threads = list()
         for host in hosts:

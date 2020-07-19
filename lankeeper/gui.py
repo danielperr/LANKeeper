@@ -8,13 +8,16 @@ import pathlib
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
-from datetime import datetime
+from datetime import datetime, timedelta
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
+from matplotlib.figure import Figure
 
 from device import Device
 from monitorgroup import MonitorGroup
 from monitorevent import MonitorEvent
 from detectors.detectors import detectors_sorted, detectors
 import utils
+from datetime import datetime
 
 
 MIN_SIZE = 900, 845
@@ -71,10 +74,12 @@ class MainWindow (QMainWindow):
         self.loopTimer.start(10)
         self.scanTimer = QTimer(self)
         self.scanTimer.timeout.connect(self._manager.scan)
-        self.scanTimer.start(20000)
+        self.scanTimer.start(10000)
         self.deviceDataCallback = self._manager.get_device_data
         self.openDeviceId = 0
         self.openMGRow = 0
+        self.online_devices = 0
+        self.devices_count = 0
 
         self.monitor_groups = []
         self.device_ids = []
@@ -217,32 +222,45 @@ class MainWindow (QMainWindow):
         self.mgEditWindow.callback = self._mgEditWindowClosed
 
     def renderDashboard(self):
-        self.dashboardPanel.mainFrame.setLayout(QVBoxLayout())
+        self.dashboardPanel.mainFrame.setLayout(QHBoxLayout())
+        self.dashboardPanel.mainFrame.layout().setContentsMargins(0, 0, 0, 0)
+        self.dashboardPanel.mainFrame.layout().setSpacing(8)
         text = 'No new devices detected.'
         if self._dbNewDevices == 1:
             text = '1 new device detected.'
         elif self._dbNewDevices > 1:
             text = '%s new devices detected.' % self._dbNewDevices
+        self.dbLabelsFrame = QFrame()
+        self.dashboardPanel.mainFrame.layout().addWidget(self.dbLabelsFrame)
+        self.dbLabelsFrame.setLayout(QVBoxLayout())
+        self.dbOnlineDevicesLabel = IconLabel('Online devices: %s of %s total' % (self.online_devices, self.devices_count), IconLabel.INFO)
+        self.dbLabelsFrame.layout().addWidget(self.dbOnlineDevicesLabel)
         self.dbNewDevicesLabel = IconLabel(text, IconLabel.INFO)
+        self.dbLabelsFrame.layout().addWidget(self.dbNewDevicesLabel)
         self.dbNewDevicesLabel.label.linkActivated.connect(self._ignoreNewDevices)
-        self.dashboardPanel.mainFrame.layout().addWidget(self.dbNewDevicesLabel)
         self.dbTrafficLabel = IconLabel(self.T_DB_TRAFFIC, IconLabel.CRITICAL)
-        self.dashboardPanel.mainFrame.layout().addWidget(self.dbTrafficLabel)
+        self.dbLabelsFrame.layout().addWidget(self.dbTrafficLabel)
         self.dbTrafficLabel.setVisible(False)
         self.dbProcessLabel = IconLabel(self.T_DB_PROCESS, IconLabel.CRITICAL)
-        self.dashboardPanel.mainFrame.layout().addWidget(self.dbProcessLabel)
+        self.dbLabelsFrame.layout().addWidget(self.dbProcessLabel)
         self.dbProcessLabel.setVisible(False)
         self.dbDriveLabel = IconLabel(self.T_DB_DRIVE, IconLabel.CRITICAL)
-        self.dashboardPanel.mainFrame.layout().addWidget(self.dbDriveLabel)
+        self.dbLabelsFrame.layout().addWidget(self.dbDriveLabel)
         self.dbDriveLabel.setVisible(False)
         self.dbWebsiteLabel = IconLabel(self.T_DB_WEBSITE, IconLabel.CRITICAL)
-        self.dashboardPanel.mainFrame.layout().addWidget(self.dbWebsiteLabel)
+        self.dbLabelsFrame.layout().addWidget(self.dbWebsiteLabel)
         self.dbWebsiteLabel.setVisible(False)
+        self.dbLabelsFrame.layout().addStretch()
         self.dashboardPanel.mainFrame.layout().addStretch()
+        # Devices graph
+        self.devicesGraph = MplCanvas(self, width=5, height=5, dpi=100)
+        self.dashboardPanel.mainFrame.layout().addWidget(self.devicesGraph)
+        self.devicesGraph.setMaximumWidth(200)
+        self.devicesGraph.plot([], [])
 
     def updateDashboard(self, devices):
+        self.devices_count = len(devices)
         cases = [0, 0, 0, 0]  # traffic, process, drive, website
-        # print(f'{cases=}')
         for device in devices:
             for event in device.monitor_events:
                 if event.ignore:
@@ -272,6 +290,12 @@ class MainWindow (QMainWindow):
             self.dbWebsiteLabel.setText(self.T_DB_WEBSITE)
         if cases[3] > 1:
             self.dbWebsiteLabel.setText(self.T_DB_WEBSITE.format(cases[3]))
+
+    def updateOnlineDevices(self, count):
+        print('%s devices connected' % count)
+        self.online_devices = count
+        self.devicesGraph.add_timepoint(datetime.now(), count)
+        self.dbOnlineDevicesLabel.setText('Online devices: %s of %s total' % (self.online_devices, self.devices_count))
 
     def updateDevicesTable(self, devices, loading=False):
         self.device_ids = [d.id for d in devices]
@@ -1340,6 +1364,7 @@ class IconLabel (QFrame):
     SIZE = 16  # width and height in pixels
 
     # Icon types
+    NONE = -1
     CHECKMARK = 0
     INFO = 1
     WARNING = 2
@@ -1379,9 +1404,63 @@ class IconLabel (QFrame):
         self.label.setText(text)
 
     def setIconType(self, iconType):
+        if iconType == self.NONE:
+            return
         pixmap = QPixmap(self.SRCS[iconType])
         pixmap = pixmap.scaled(16, 16, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         self.icon.setPixmap(pixmap)
+
+
+class MplCanvas(FigureCanvasQTAgg):
+
+    XLIM = 10 * 60  # in seconds
+
+    def __init__(self, parent=None, width=5, height=4, dpi=100):
+        self.times = []
+        self.x = []
+        self.y = []
+        self.fig = Figure(figsize=(width, height), dpi=dpi)
+        self.axes = self.fig.add_subplot(111)
+        super(MplCanvas, self).__init__(self.fig)
+
+    def plot(self, x, y):
+        if len(x) == 0:
+            x = [-1, 0]
+            y = [1, 1]
+            self.axes.set_ylim(0, 1)
+        elif len(x) == 1:
+            x = [-1, 0]
+            y = [y[0], y[0]]
+        self.axes.clear()
+        self.axes.axis('off')
+        self.axes.set_xlim(max(min(x), -self.XLIM), 0)
+        self.axes.plot([x[0], x[0], x[-1], x[-1]], [max(y)*1.1, 0, 0, max(y)*1.1], color='#484848')
+        self.axes.fill(x + [x[-1], x[0]], y + [0, 0], facecolor='#9DB320')
+        self.axes.text(0.5, 0.9, 'Online Devices', fontsize=12, ha='center', transform=self.fig.transFigure)
+        if self.times:
+            left_text = utils.time_ago(max(
+                self.times[0],
+                datetime.now() - timedelta(seconds=self.XLIM)
+            ))
+        else:
+            left_text = ''
+        self.axes.text(0.13, 0.05, left_text, fontsize=7, ha='left', transform=self.fig.transFigure)
+        self.axes.text(0.90, 0.05, 'Now', fontsize=7, ha='right', transform=self.fig.transFigure)
+        self.draw()
+
+    def add_timepoint(self, now, devices):
+        """Add a time point to the graph
+        now (datetime): Time point
+        devices (int): Devices at the time point"""
+        # all previous x values are negative. now = 0 seconds
+        for i in range(len(self.times)):
+            self.x[i] = -(now - self.times[i]).total_seconds()
+        self.times.append(now)
+        self.x.append(0)
+        self.y.append(devices)
+        print(self.x)
+        print(self.y)
+        self.plot(self.x, self.y)
 
 
 def callback():
